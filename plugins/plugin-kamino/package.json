@@ -45,7 +45,9 @@
     "@kamino-finance/kliquidity-sdk": "^13.0.0",
     "@kamino-finance/limo-sdk": "^2.0.4",
     "@solana/kit": "^3.0.3",
+    "@solana/web3.js": "^1.98.4",
     "bn.js": "^5.2.3",
+    "decimal.js": "^10.6.0",
     "zod": "^4.3.5"
   },
   "devDependencies": {
