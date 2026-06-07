@@ -1,4 +1,4 @@
-import { IAgentRuntime } from '@elizaos/core';
+import { IAgentRuntime, logger, Service } from '@elizaos/core';
 import type {
     KaminoPluginSettings,
     MarketConfig,
@@ -32,8 +32,8 @@ const DEFAULT_MARKETS: MarketConfig[] = [
 const DEFAULT_REFRESH_MS = 30000;
 
 
-export class KaminoService {
-    private runtime: IAgentRuntime;
+export class KaminoService extends Service {
+    // runtime: IAgentRuntime;
     private rpc!: Rpc<SolanaRpcApi>;
     private rpcSubscriptions: any;
     // private currentSlot!: bigint;
@@ -45,9 +45,17 @@ export class KaminoService {
     private obligationCache: Map<string, CachedObligation> = new Map();
     private readonly OBLIGATION_CACHE_TTL_MS = 10000;
 
+    override capabilityDescription =
+    'Provides access to Kamino Protocol — lending, borrowing, liquidity vaults, farms, and limit orders on Solana.';
+
+
     constructor(runtime: IAgentRuntime) {
-        this.runtime = runtime;
+        super(runtime)
     }
+
+    override async stop(): Promise<void> {
+        logger.info('Starter service stopped');
+      }
 
     async initialize(): Promise<void> {
         const settings = this.getSettings();
@@ -99,6 +107,8 @@ export class KaminoService {
         this.isReady = true;
         console.log(`[KaminoService] Initialized with ${this.markets.size} market(s)`);
     }
+
+    
 
     private getSettings(): KaminoPluginSettings {
         const secrets = (this.runtime.getSetting('secrets') as unknown as Record<string, string>) || {};
