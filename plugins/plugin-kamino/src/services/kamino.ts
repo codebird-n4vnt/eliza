@@ -188,7 +188,7 @@ export class KaminoService extends Service {
 
 
 
-    getCRpc(): Rpc<SolanaRpcApi> {
+    getRpc(): Rpc<SolanaRpcApi> {
         return this.rpc;
     }
     getRpcSubscriptions(): any{
@@ -497,7 +497,6 @@ export class KaminoService extends Service {
         const signatures : string[] = [];
         const signer = this.getSigner();
 
-        // const { value: latestBlockhash } = await this.rpc.getLatestBlockhash().send();
 
         const setupIxs = action.setupIxs ?? [];
 

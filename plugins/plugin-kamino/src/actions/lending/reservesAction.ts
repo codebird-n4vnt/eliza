@@ -7,7 +7,7 @@ export const ReserveAction: Action = {
     name: 'KAMINO_RESERVES',
     similes: [
         'LIST_KAMINO_RESERVES',
-        'SHOW_KAMINO_MARKETS',
+        'SHOW_KAMINO_RESERVES',
         'KAMINO_APYS',
         'WHAT_ARE_THE_RATES',
         'LENDING_RATES'
@@ -58,11 +58,11 @@ export const ReserveAction: Action = {
 
     examples: [
         [
-            {name: '{{user1}}', content: {text: "Show me available markets"} },
+            {name: '{{user1}}', content: {text: "Show me available reserves"} },
             {name: '{{agentName}}', content: {text: 'Here are the current Kamino Lend reserves...', action: 'KAMINO_RESERVES'}},
         ],
         [
-            {name: '{{user1}}', content: {text: "What are the current lending rates"}},
+            {name: '{{user1}}', content: {text: "List all the available reserves"}},
             {name: '{{agentName}}', content:{text: 'Here are the current Kamino Lend reserves with their APYs...', action: 'KAMINO_RESERVES'}},
         ],
     ],
