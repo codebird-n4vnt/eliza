@@ -6,9 +6,8 @@ import { ObligationTypeTag } from "@kamino-finance/klend-sdk";
 
 
 export const LendAction: Action = {
-    name : 'LEND_ACTION',
+    name : 'KAMINO_LEND',
     similes: [
-        'KAMINO_LEND',
         'LEND_ON_KAMINO',
         'DEPOSIT_LEND',
         'EARN_YIELD',
@@ -49,7 +48,7 @@ export const LendAction: Action = {
                 return;
             }
 
-            const reserve = market.getReservesBySymbol(token)[0];
+            const reserve = market.getFloatRateReserveByMint(token);
             if(!reserve){
                 callback!({
                     text: `Reserve for ${token} not found in market ${market.getName()}.`,

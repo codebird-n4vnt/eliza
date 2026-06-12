@@ -16,8 +16,7 @@ import * as os from 'os';
 import bs58 from 'bs58';
 import BN from 'bn.js'
 import { address, createSolanaRpc, createKeyPairSignerFromBytes, KeyPairSigner, Rpc, SolanaRpcApi, Address, SetTransactionWithinSizeLimitFromTransactionMessage, createTransactionMessage, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash, appendTransactionMessageInstruction, appendTransactionMessageInstructions, pipe, signTransactionMessageWithSigners, sendAndConfirmTransactionFactory, getSignatureFromTransaction, assertIsTransactionMessageWithinSizeLimit, createSolanaRpcSubscriptions, assertIsTransactionWithinSizeLimit } from '@solana/kit';
-import { resolve } from 'dns';
-import { get } from 'http';
+
 
 
 
@@ -235,7 +234,7 @@ export class KaminoService extends Service {
         }
         const market = this.getMarket(marketName) || this.getDefaultMarket();
 
-        const reserve = market.getReservesByMint(tokenMint)[0];
+        const reserve = market.getFloatRateReserveByMint(tokenMint);
         if (!reserve) {
             throw new Error(`Reserve not found for mint: ${tokenMint}`);
         }
@@ -305,7 +304,7 @@ export class KaminoService extends Service {
     ): KaminoReserve | undefined {
         const targetMarket = marketName ? this.markets.get(marketName) : this.getDefaultMarket();
         if (!targetMarket) return undefined;
-        return targetMarket.getReservesBySymbol(symbol)[0];
+        return targetMarket.getFloatRateReserveBySymbol(symbol);
     }
 
     async getUserObligation(
@@ -636,7 +635,7 @@ export class KaminoService extends Service {
         amount: Decimal
     ): Promise<{ setupIxs: any[]; lendingIxs: any[]; cleanupIxs: any[]; computeBudgetIxs: any[] }> {
         const { currentSlot, market, reserve, amountBN} = await this.getBoilerplate(marketName,tokenMint,amount);
-        const obligation = new VanillaObligation(PROGRAM_ID);
+        const obligation = new VanillaObligation(market.programId);
 
         return KaminoAction.buildDepositTxns({
             kaminoMarket: market,
@@ -667,7 +666,7 @@ export class KaminoService extends Service {
             amount: amountBN,
             reserveAddress: reserve.address,
             owner: this.getSigner(),
-            obligation: new VanillaObligation(PROGRAM_ID),
+            obligation: new VanillaObligation(market.programId),
             useV2Ixs: true,
             scopeRefreshConfig: undefined,
             currentSlot
@@ -682,12 +681,12 @@ export class KaminoService extends Service {
     ): Promise<{ setupIxs: any[]; lendingIxs: any[]; cleanupIxs: any[]; computeBudgetIxs: any[] }>{
         const { currentSlot, market, reserve, amountBN} = await this.getBoilerplate(marketName,tokenMint,amount);
 
-        return KaminoAction.buildBorrowTxns({
+        return KaminoAction.buildRepayTxns({
             kaminoMarket: market,
             amount: amountBN,
             reserveAddress: reserve.address,
             owner: this.getSigner(),
-            obligation: new VanillaObligation(PROGRAM_ID),
+            obligation: new VanillaObligation(market.programId),
             useV2Ixs: true,
             scopeRefreshConfig: undefined,
             currentSlot,
@@ -702,12 +701,12 @@ export class KaminoService extends Service {
     ): Promise<{ setupIxs: any[]; lendingIxs: any[]; cleanupIxs: any[] }> {
         const { currentSlot, market, reserve, amountBN} = await this.getBoilerplate(marketName,tokenMint,amount);
 
-        return KaminoAction.buildBorrowTxns({
+        return KaminoAction.buildWithdrawTxns({
             kaminoMarket: market,
             amount: amountBN,
             reserveAddress: reserve.address,
             owner: this.getSigner(),
-            obligation: new VanillaObligation(PROGRAM_ID),
+            obligation: new VanillaObligation(market.programId),
             useV2Ixs: true,
             scopeRefreshConfig: undefined,
             currentSlot,
