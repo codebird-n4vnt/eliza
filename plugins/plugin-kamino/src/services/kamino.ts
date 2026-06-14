@@ -216,6 +216,15 @@ export class KaminoService extends Service {
         return this.isReady;
     }
 
+    async getCurrentSlot(): Promise<bigint>{
+        let currentSlot:bigint;
+        try {
+            currentSlot = BigInt(await this.rpc.getSlot().send());
+        } catch (erro) {
+            currentSlot = BigInt(0);
+        }
+        return currentSlot;
+    }
     async getBoilerplate(
         marketName: string,
         tokenMint: Address,
@@ -226,12 +235,8 @@ export class KaminoService extends Service {
         reserve: KaminoReserve;
         amountBN: any;
     }>{
-        let currentSlot: bigint;
-        try {
-            currentSlot = BigInt(await this.rpc.getSlot().send());
-        } catch (error) {
-            currentSlot = BigInt(0);
-        }
+        const currentSlot =  await this.getCurrentSlot();
+
         const market = this.getMarket(marketName) || this.getDefaultMarket();
 
         const reserve = market.getFloatRateReserveByMint(tokenMint);
