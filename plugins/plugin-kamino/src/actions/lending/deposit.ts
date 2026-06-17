@@ -316,7 +316,7 @@ export const depositAction : Action = {
         const service = runtime.getService<KaminoService>('kamino-service');
         
         try {
-            const params = parseDepositMessage(message.content.text);
+            const params = await parseDepositMessage(runtime,message,state);
             if(!params){
                 callback!({
                     text: 'I need to know what token and how much you want to deposit as collateral. For example: "Deposit 10 SOL as collateral" or "Add 500 USDC collateral" .',

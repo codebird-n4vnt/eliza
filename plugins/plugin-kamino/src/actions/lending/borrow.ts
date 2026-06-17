@@ -24,7 +24,7 @@ export const BorrowAction: Action = {
 
             const params = await parseBorrowMessage(runtime,message,state);
             if(!params?.amount || !params?.token) return false;
-            const market = service.getMarket(params.marketName);
+            const market = service.getMarket(params.marketName!);
             const reserve = resolveReserve(market!,params);
             if(!reserve) return false;
 
@@ -50,7 +50,7 @@ export const BorrowAction: Action = {
         }
 
         const {token,amount,rateKind,termDays,marketName} = params;
-        const market = service?.getMarket(marketName);
+        const market = service?.getMarket(marketName!);
         const reserve = resolveReserve(market!,params);
 
         if(!reserve){
@@ -62,7 +62,7 @@ export const BorrowAction: Action = {
             return {success: false, text: 'Reserve not found'};
         }
 
-        const obligation = await service?.getUserObligation(marketName,ObligationTypeTag.Vanilla);
+        const obligation = await service?.getUserObligation(marketName!,ObligationTypeTag.Vanilla);
         if(!obligation || obligation.deposits.size === 0){
             await callback?.(
                 {
@@ -76,7 +76,7 @@ export const BorrowAction: Action = {
         const amountDecimal = new Decimal(amount);
         try {
             const action = await service?.buildBorrowTxns(
-                marketName,
+                marketName!,
                 tokenMint,
                 amountDecimal
             );

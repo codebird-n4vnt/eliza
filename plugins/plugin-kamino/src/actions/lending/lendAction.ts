@@ -30,7 +30,7 @@ export const LendAction: Action = {
         const service = runtime.getService<KaminoService>('kamino-service');
         
         try {
-            const params = parseLendMessage(memory.content.text);
+            const params = await parseLendMessage(runtime,memory,state);
             if(!params){
                 callback!({
                     text:'I need to know what token and how much you want to lend. For example: "Lend 100 USDC" Or "Supply 50 SOL for yield".' ,
@@ -48,7 +48,7 @@ export const LendAction: Action = {
                 return;
             }
 
-            const reserve = market.getFloatRateReserveByMint(token);
+            const reserve = market.getFloatRateReserveBySymbol(token);
             if(!reserve){
                 callback!({
                     text: `Reserve for ${token} not found in market ${market.getName()}.`,

@@ -1,10 +1,10 @@
 import { FixedRateReserveKind, KaminoMarket, KaminoReserve } from "@kamino-finance/klend-sdk";
-import { BorrowParams } from "./parser";
+import { BorrowParamsExtended } from "./parser";
 
 
 export function resolveReserve(
     market: KaminoMarket,
-    params: BorrowParams
+    params: BorrowParamsExtended
 ) : KaminoReserve | null {
     const {token, rateKind, termDays} = params;
     if(rateKind === 'fixed'){

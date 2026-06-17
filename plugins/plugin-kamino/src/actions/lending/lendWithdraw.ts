@@ -19,7 +19,7 @@ export const LendWithdraw: Action = {
             const service = runtime.getService<KaminoService>('kamino-service');
             if (!service?.isInitialized()) return false;
 
-            const params = await parseLendWithdrawMessage(message.content.text);
+            const params = await parseLendWithdrawMessage(runtime,message,state);
             if (!params) return false;
 
             let { marketName } = params;
@@ -35,7 +35,7 @@ export const LendWithdraw: Action = {
         const service = runtime.getService<KaminoService>('kamino-service');
 
         try {
-            const params = await parseLendWithdrawMessage(message.content.text);
+            const params = await parseLendWithdrawMessage(runtime,message,state);
             if (!params) {
                 callback!({
                     text: 'I need to know what token and how much you want to withdraw. For example: "Withdraw 100 USDC from lending" or "Redeem all my SOL supply"',
@@ -52,7 +52,7 @@ export const LendWithdraw: Action = {
                 });
                 return
             }
-            const reserve = market?.getFloatRateReserveByMint(token);
+            const reserve = market?.getFloatRateReserveBySymbol(token);
             if (!reserve) {
                 callback!({
                     text: `Reserve for ${token} not found`,
