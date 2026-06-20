@@ -1,7 +1,6 @@
 import { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { KaminoService } from "../../services/kamino";
 import { parseBorrowMessage } from "../../utils/parser";
-import { resolveReserve } from "../../utils/resolveReserve";
 import { ObligationTypeTag } from "@kamino-finance/klend-sdk";
 import Decimal from "decimal.js";
 
@@ -25,7 +24,7 @@ export const BorrowAction: Action = {
             const params = await parseBorrowMessage(runtime,message,state);
             if(!params?.amount || !params?.token) return false;
             const market = service.getMarket(params.marketName!);
-            const reserve = resolveReserve(market!,params);
+            const reserve = market?.getFloatRateReserveBySymbol(params.token);
             if(!reserve) return false;
 
             return true;
@@ -49,17 +48,13 @@ export const BorrowAction: Action = {
             return {success:false, text:'Parse failed'};
         }
 
-        const {token,amount,rateKind,termDays,marketName} = params;
+        const {token,amount,marketName} = params;
         const market = service?.getMarket(marketName!);
-        const reserve = resolveReserve(market!,params);
+        const reserve = market?.getFloatRateReserveBySymbol(params.token);
 
-        if(!reserve){
-            const hint = 
-                rateKind === 'fixed' && termDays 
-                    ? `No fixed-rate reserve found for ${token} with a ${termDays}-day term.`
-                    : `No ${rateKind} rate reserve found for ${token} in the ${marketName} market.`;
-            await callback?.({ text: hint, error:true});
-            return {success: false, text: 'Reserve not found'};
+        if(!reserve){;
+            await callback?.({ text: `Reserve not found for ${token}`, actions:['KAMINO_BORROW']});
+            return;
         }
 
         const obligation = await service?.getUserObligation(marketName!,ObligationTypeTag.Vanilla);
@@ -81,9 +76,7 @@ export const BorrowAction: Action = {
                 amountDecimal
             );
             const tx = await service?.sendActionTransaction(action!);
-            const apyLabel = rateKind === 'fixed' 
-                ? `${(reserve.totalBorrowAPYFixedRate()*100).toFixed(2)}% fixed`
-                : `${(reserve.totalBorrowAPY((await service?.getCurrentSlot())!)).toFixed(2)}% variable`;
+            const apyLabel = `${(reserve.totalBorrowAPY((await service?.getCurrentSlot())!)).toFixed(2)}% float`;
             
             await callback!({
                 text:`Borrowed ${amount} ${token} at ${apyLabel}. Transaction: ${tx}`,
@@ -102,15 +95,15 @@ export const BorrowAction: Action = {
     examples:[
         [
             {name:'{{user}}',content:{text:'I want to take a 30 day fixed loan of 50 SOL'}},
-            {name:'{{agentName}}', content:{text:'Borrowed 50 SOl at 5.10% fixed (30-day term)', action:'KAMINO_BORROW'}},
+            {name:'{{agent}}', content:{text:'Fixed loans are not supported', action:'KAMINO_BORRppOW'}},
         ],
         [
             {name:'{{user}}', content:{text:'borrow 100 USDC'}},
-            {name:'{{agentName}}', content:{text:'Borrowed 100 USDC at 8.23% variable.', action:'KAMINO_BORROW'}}
+            {name:'{{agent}}', content:{text:'Borrowed 100 USDC at 8.23% variable.', action:'KAMINO_BORROW'}}
         ],
         [
             {name: '{{user}}', content:{text:'borrow 200 USDT at the cheapest rate'}},
-            {name: '{{agentName}}', content:{text:'Borrowed 200 USDT at 7.40% variable.', action:'KAMINO_BORROW'}}
+            {name: '{{agent}}', content:{text:'Borrowed 200 USDT at 7.40% variable.', action:'KAMINO_BORROW'}}
         ]
     ]
 

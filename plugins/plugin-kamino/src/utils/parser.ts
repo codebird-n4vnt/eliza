@@ -15,10 +15,8 @@ import type {
 
 // ─── Extended Borrow type (adds rateKind + termDays on top of types/index.ts) ─
 
-export type BorrowParamsExtended = BorrowParams & {
-    rateKind: 'float' | 'fixed';
-    termDays: number | null;
-};
+
+
 
 // ─── LendParams (mirror of DepositParams, kept separate for clarity) ──────────
 
@@ -190,34 +188,30 @@ export async function parseDepositMessage(
 // Used by: buildBorrowTxns (KaminoAction.buildBorrowTxns / VanillaObligation)
 // Borrows tokens from the market against existing collateral.
 
-const BORROW_SCHEMA = {
-    type: 'object',
-    properties: {
-        token:      { type: 'string' },
-        amount:     { type: 'string' },
-        rateKind:   { type: 'string', enum: ['float', 'fixed'] },
-        termDays:   { type: 'number' },        // number, not string — avoids Number() cast issues
-        marketName: { type: 'string' },
-    },
-    required: ['token', 'amount'],
-};
+// const BORROW_SCHEMA = {
+//     type: 'object',
+//     properties: {
+//         token:      { type: 'string' },
+//         amount:     { type: 'string' },
+//         rateKind:   { type: 'string', enum: ['float', 'fixed'] },
+//         termDays:   { type: 'number' },        // number, not string — avoids Number() cast issues
+//         marketName: { type: 'string' },
+//     },
+//     required: ['token', 'amount'],
+// };
 
 const BORROW_TEMPLATE = `
 {{providers}}
 
 Extract borrow parameters from the user message below.
 The user wants to take a loan from Kamino against their deposited collateral.
-If the rate type is not specified, default to "float" (variable rate).
 If the market is not specified, default to "main".
-Only set termDays if rateKind is "fixed" and the user mentioned a duration (e.g. 30 days, 90 days).
 
 User message: "{{recentMessages}}"
 
 Return JSON with:
 - token: string      (e.g. "USDC", "SOL")
 - amount: string     (numeric string)
-- rateKind: string   ("float" or "fixed", default "float")
-- termDays: number   (only for fixed rate; omit or null otherwise)
 - marketName: string (default "main")
 `.trim();
 
@@ -225,17 +219,15 @@ export async function parseBorrowMessage(
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-): Promise<BorrowParamsExtended | null> {
+): Promise<BorrowParams | null> {
     const result = await runObjectModel(
-        runtime, message, state, BORROW_TEMPLATE, BORROW_SCHEMA
+        runtime, message, state, BORROW_TEMPLATE, BASE_SCHEMA
     );
     if (!result) return null;
 
     return {
         token:      String(result.token).toUpperCase(),
         amount:     String(result.amount),
-        rateKind:   (result.rateKind as 'float' | 'fixed') ?? 'float',
-        termDays:   result.termDays != null ? Number(result.termDays) : null,
         marketName: String(result.marketName ?? 'main'),
     };
 }
@@ -255,8 +247,8 @@ If the user says "all", "everything", "full", or "max", set amount to "max".
 User message: "{{recentMessages}}"
 
 Return JSON with:
-- token: string  (e.g. "USDC", "SOL")
-- amount: string ("max" or a numeric string like "100")
+- token: string      (e.g. "USDC", "SOL")
+- amount: string     (numeric string)
 - marketName: string (default "main")
 `.trim();
 
@@ -266,13 +258,13 @@ export async function parseRepayMessage(
     state?: State,
 ): Promise<RepayParams | null> {
     const result = await runObjectModel(
-        runtime, message, state, REPAY_TEMPLATE, MAX_SCHEMA
+        runtime, message, state, REPAY_TEMPLATE, BASE_SCHEMA
     );
     if (!result) return null;
 
     return {
         token:      String(result.token).toUpperCase(),
-        amount:     String(result.amount),       // may be "max"
+        amount:     String(result.amount),
         marketName: String(result.marketName ?? 'main'),
     };
 }
@@ -287,13 +279,13 @@ const WITHDRAW_TEMPLATE = `
 Extract collateral withdrawal parameters from the user message below.
 The user wants to withdraw collateral they previously deposited into Kamino.
 If the market is not specified, default to "main".
-If the user says "all", "everything", or "max", set amount to "max".
+If the user says "all", "everything", "full", or "max", set amount to "max".
 
 User message: "{{recentMessages}}"
 
 Return JSON with:
-- token: string  (e.g. "SOL", "USDC")
-- amount: string ("max" or a numeric string like "5")
+- token: string      (e.g. "USDC", "SOL")
+- amount: string     (numeric string)
 - marketName: string (default "main")
 `.trim();
 
@@ -303,13 +295,13 @@ export async function parseWithdrawMessage(
     state?: State,
 ): Promise<WithdrawParams | null> {
     const result = await runObjectModel(
-        runtime, message, state, WITHDRAW_TEMPLATE, MAX_SCHEMA
+        runtime, message, state, WITHDRAW_TEMPLATE, BASE_SCHEMA
     );
     if (!result) return null;
 
     return {
         token:      String(result.token).toUpperCase(),
-        amount:     String(result.amount),       // may be "max"
+        amount:     String(result.amount),
         marketName: String(result.marketName ?? 'main'),
     };
 }
