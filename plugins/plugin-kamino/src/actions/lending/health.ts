@@ -28,11 +28,11 @@ export const HealthAction: Action = {
             const health = await service?.getHealthCheck(true);
 
             if(!health?.hasPositions){
-                await callback!({
+                await callback?.({
                     text: "You have no active positions in Kamino lend.\n\n- To earn yield: use **KAMINO_LEND** to supply tokens\n- To borrow: use **KAMINO_DEPOSIT** to add collateral first",
-                    data:health
+                    data: health
                 })
-                return
+                return {success: true, text: 'No active positions'};
             }
             const riskConfig:Record<string,{suggestion: string}> = {
                 safe: {suggestion: 'Your position is healthy. No action needed.'},
@@ -72,19 +72,19 @@ export const HealthAction: Action = {
                 lines.push('');
             }
 
-            await callback!({
+            await callback?.({
                 text: lines.join('\n').trim(),
                 actions:['KAMINO_HEALTH'],
                 data: health
             })
-            return;
+            return {success:true, text:`Position health : ${health?.overallRisk}`};
 
         } catch (error:any) {
-            await callback!({
+            await callback?.({
                 text:`Failed to fetch position health: ${error.message ?? error}`,
                 data:{error: String(error)}
             });
-            return
+            return {success:false, text:String(error)};
         }
     },
     examples:[

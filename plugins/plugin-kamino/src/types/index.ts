@@ -1,4 +1,4 @@
-import type { KaminoMarket, KaminoObligation, KaminoReserve } from '@kamino-finance/klend-sdk';
+import type { KaminoObligation } from '@kamino-finance/klend-sdk';
 
 // ─── Market Registry ────────────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ export interface CachedObligation{
 export interface HealthCheckResult {
   positions: PositionInfo[];
   hasPositions: boolean;
-  overallRisk: 'safe' | 'caution' | 'danger' | 'liquidatable';
+  overallRisk: 'safe' | 'caution' | 'danger' | 'critical';
   worstHealthFactor: string;
 }
 

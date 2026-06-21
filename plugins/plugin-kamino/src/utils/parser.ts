@@ -13,11 +13,6 @@ import type {
     WithdrawParams,
 } from '../types/index';
 
-// ─── Extended Borrow type (adds rateKind + termDays on top of types/index.ts) ─
-
-
-
-
 // ─── LendParams (mirror of DepositParams, kept separate for clarity) ──────────
 
 export type LendParams = DepositParams;
@@ -188,18 +183,6 @@ export async function parseDepositMessage(
 // Used by: buildBorrowTxns (KaminoAction.buildBorrowTxns / VanillaObligation)
 // Borrows tokens from the market against existing collateral.
 
-// const BORROW_SCHEMA = {
-//     type: 'object',
-//     properties: {
-//         token:      { type: 'string' },
-//         amount:     { type: 'string' },
-//         rateKind:   { type: 'string', enum: ['float', 'fixed'] },
-//         termDays:   { type: 'number' },        // number, not string — avoids Number() cast issues
-//         marketName: { type: 'string' },
-//     },
-//     required: ['token', 'amount'],
-// };
-
 const BORROW_TEMPLATE = `
 {{providers}}
 
@@ -258,7 +241,7 @@ export async function parseRepayMessage(
     state?: State,
 ): Promise<RepayParams | null> {
     const result = await runObjectModel(
-        runtime, message, state, REPAY_TEMPLATE, BASE_SCHEMA
+        runtime, message, state, REPAY_TEMPLATE, MAX_SCHEMA
     );
     if (!result) return null;
 
@@ -295,7 +278,7 @@ export async function parseWithdrawMessage(
     state?: State,
 ): Promise<WithdrawParams | null> {
     const result = await runObjectModel(
-        runtime, message, state, WITHDRAW_TEMPLATE, BASE_SCHEMA
+        runtime, message, state, WITHDRAW_TEMPLATE, MAX_SCHEMA
     );
     if (!result) return null;
 

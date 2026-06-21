@@ -2,7 +2,7 @@ import { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/
 import { KaminoService } from "../../services/kamino";
 import { parseLendWithdrawMessage } from "../../utils/parser";
 import { ObligationTypeTag } from "@kamino-finance/klend-sdk";
-import Decimal from "decimal.js";
+import { resolveMax } from "../../utils/resolveMax";
 
 export const LendWithdraw: Action = {
 
@@ -37,78 +37,75 @@ export const LendWithdraw: Action = {
         try {
             const params = await parseLendWithdrawMessage(runtime,message,state);
             if (!params) {
-                callback!({
+                await callback?.({
                     text: 'I need to know what token and how much you want to withdraw. For example: "Withdraw 100 USDC from lending" or "Redeem all my SOL supply"',
-                    action: 'KAMINO_LEND_WITHDRAW',
+                    actions: ['KAMINO_LEND_WITHDRAW'],
+                    error:true
                 });
-                return;
+                return{success:false, text:'Token and amount not provided.'};
             }
             const { token, amount, marketName } = params;
             const market = marketName ? service?.getMarket(marketName) : service?.getDefaultMarket();
             if (!market) {
-                callback!({
+                await callback?.({
                     text: `Market ${marketName} not found.`,
-                    action: 'KAMINO_LEND_WITHDRAW',
+                    actions: ['KAMINO_LEND_WITHDRAW'],
+                    error:true,
                 });
-                return
+                return{success:false, text:'Market not found.'}
             }
             const reserve = market?.getFloatRateReserveBySymbol(token);
             if (!reserve) {
-                callback!({
-                    text: `Reserve for ${token} not found`,
-                    action: 'KAMINO_LEND_WITHDRAW',
+                await callback?.({
+                    text: `Reserve for ${token} not found in ${market.getName()}`,
+                    actions: ['KAMINO_LEND_WITHDRAW'],
+                    error:true,
                 });
-                return;
+                return{success:false, text:'Reserve not found'};
             }
 
             const tokenMint = reserve.getLiquidityMint();
-            let amountDecimal;
-            if (amount === 'max') {
-                const userObligation = await service?.getUserObligation(market.getName(), ObligationTypeTag.Lending);
-                if (!userObligation) {
-                    callback!({
-                        text: `Can't find you lending obligation for ${marketName}`,
-                        action: 'KAMINO_LEND_WITHDRAW',
-                    })
-                }
-                const userReserveValue = userObligation?.getDepositByReserve(reserve.address)?.amount;
-                if (!userReserveValue) {
-                    callback!({
-                        text: `You don't have deposits in this reserve. `,
-                        action: 'KAMINO_LEND_WITHDRAW'
-                    });
-                }
-                amountDecimal = userReserveValue;
-            } else {
-                amountDecimal = new Decimal(amount);
+            
+            const obligation = await service?.getUserObligation(market.getName(), ObligationTypeTag.Lending);
+            if (!obligation) {
+                await callback?.({
+                    text: `Can't find you lending obligation for ${marketName}`,
+                    actions: ['KAMINO_LEND_WITHDRAW'],
+                    error:true,
+                });
+                return{success:false, text:'User obligation not found.'};
             }
-
+    
+            const amountDecimal = resolveMax(amount,obligation,reserve);
             const action = await service?.buildLendWithdrawTxns(market.getName(), tokenMint, amountDecimal!);
 
-            const signatures = await service?.sendActionTransaction(action!);
-            service?.invalidateObligationCache(market.getName(), ObligationTypeTag.Lending);
+            const tx = await service?.sendActionTransaction(action!);
+            service?.invalidateObligationCache(market?.getName(), ObligationTypeTag.Lending);
 
-            callback!({
-                text: `Withdraw of **${amount == 'max' ? 'all' : amount} ${token}** from Kamino lending is successful.\n\nTransaction: ${signatures?.join(', ')}`,
-                action: 'KAMINO_LEND_WITHDRAW',
-                data: { token, amount, signatures }
+            await callback?.({
+                text: `Withdraw of **${amount == 'max' ? 'all' : amount} ${token}** from Kamino lending is successful.\n\nTransaction: ${tx?.join(', ')}`,
+                actions: ['KAMINO_LEND_WITHDRAW'],
+                data: { token, amount, tx }
             });
+            return {success:true, text:`Withdraw successful : ${tx}`};
+
         } catch (error) {
-            callback!({
+            await callback?.({
                 text: `Withdraw failed: ${error}`,
-                action: 'KAMINO_LEND_WITHDRAW',
+                actions: ['KAMINO_LEND_WITHDRAW'],
                 data: {error: String(error)},
             });
+            return {success:false, text:String(error)}
         }
     },
     examples:[
         [
-            {name: '{{user1}}', content:{text: 'Withdraw 50 USDC from lending'}},
-            {name: '{{agentName}}', content:{text: 'Withdraw of 50 USDC from Kamino lending is successful...', action:'KAMINO_LEND_WITHDRAW'}},
+            {name: '{{user}}', content:{text: 'Withdraw 50 USDC from lending'}},
+            {name: '{{agentName}}', content:{text: 'Withdraw of 50 USDC from Kamino lending is successful...', actions:['KAMINO_LEND_WITHDRAW']}},
         ],
         [
-            {name: '{{user1}}', content:{text: 'Redeem all my SOL supply'}},
-            {name: '{{agentName}}', content:{text: 'Successfully redeemed all SOL...', action:'KAMINO_LEND_WITHDRAW'}},
+            {name: '{{user}}', content:{text: 'Redeem all my SOL supply'}},
+            {name: '{{agentName}}', content:{text: 'Successfully redeemed all SOL...', actions:['KAMINO_LEND_WITHDRAW']}},
         ]
     ]
 }

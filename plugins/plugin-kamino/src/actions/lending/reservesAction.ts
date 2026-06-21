@@ -1,6 +1,5 @@
 import { Action, HandlerCallback, IAgentRuntime, Memory, MemoryRetrievalOptions, State } from "@elizaos/core";
 import { KaminoService } from "../../services/kamino";
-import { boolean } from "zod";
 
 
 export const ReserveAction: Action = {
@@ -25,13 +24,13 @@ export const ReserveAction: Action = {
         try {
             const reserves = await service?.getAllReserves();
 
-            if(reserves?.length===0){
-                callback!({
+            if(!reserves || reserves?.length===0){
+                await callback?.({
                     text: 'No reserves are currently available.',
-                    action: 'KAMINO_RESERVES',
+                    actions: ['KAMINO_RESERVES'],
                     data: {reserves: []},
                 });
-                return;
+                return{success:false, text:`Reserves not found`};
             }
 
             const lines = reserves?.map((r)=>{
@@ -42,28 +41,30 @@ export const ReserveAction: Action = {
                     : 'borrow only';
                 return `- **${r.symbol}** (${r.marketName}): Supply ${r.supplyAPY}% | Borrow ${r.borrowAPY}% | LTV ${r.ltv} | Available ${r.availableLiquidity} ${r.symbol} | ${type}`;
             });
-            callback!({
+            await callback?.({
                 text: `Here are the current Kamino Lend reserves: ${lines?.join('\n')}`,
-                action: 'KAMINO_RESERVES',
+                actions: ['KAMINO_RESERVES'],
                 data: {reserves}
             });
+            return {success:true, text:'Fetching reserves successful', data:{reserves}}
         } catch (error) {
-            callback!({
+            await callback?.({
                 text: `Failed to fetch reserves: ${error}`,
-                action: 'KAMINO_RESERVES',
+                actions: ['KAMINO_RESERVES'],
                 data: { error: String(error)},
             });
+            return {success:false, text:String(error)}
         }
     },
 
     examples: [
         [
-            {name: '{{user1}}', content: {text: "Show me available reserves"} },
-            {name: '{{agentName}}', content: {text: 'Here are the current Kamino Lend reserves...', action: 'KAMINO_RESERVES'}},
+            {name: '{{user}}', content: {text: "Show me available reserves"} },
+            {name: '{{agent}}', content: {text: 'Here are the current Kamino Lend reserves...', actions: ['KAMINO_RESERVES']}},
         ],
         [
-            {name: '{{user1}}', content: {text: "List all the available reserves"}},
-            {name: '{{agentName}}', content:{text: 'Here are the current Kamino Lend reserves with their APYs...', action: 'KAMINO_RESERVES'}},
+            {name: '{{user}}', content: {text: "List all the available reserves"}},
+            {name: '{{agent}}', content:{text: 'Here are the current Kamino Lend reserves with their APYs...', actions: ['KAMINO_RESERVES']}},
         ],
     ],
 };

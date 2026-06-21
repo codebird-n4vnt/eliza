@@ -3,6 +3,7 @@ import { KaminoService } from "../../services/kamino";
 import { parseWithdrawMessage } from "../../utils/parser";
 import { ObligationTypeTag } from "@kamino-finance/klend-sdk";
 import Decimal from "decimal.js";
+import { resolveMax } from "../../utils/resolveMax";
 
 
 export const WithdrawAction: Action = {
@@ -35,21 +36,21 @@ export const WithdrawAction: Action = {
             const currentState = state ?? (await runtime.composeState(message));
             const params = await parseWithdrawMessage(runtime, message, currentState);
             if (!params) {
-                await callback!({
+                await callback?.({
                     text: "Couldn't parse your withdrawal request. Please specify token and amount, e.g. 'withdraw 100 USDC'",
                     actions: ['KAMINO_WITHDRAW'],
                 });
-                return;
+                return{success:false, text:'Token and amount not provided.'};
             }
 
             const market = params?.marketName ? service?.getMarket(params?.marketName!) : service?.getDefaultMarket();
             const reserve = market?.getFloatRateReserveBySymbol(params?.token!);
             if (!reserve) {
-                await callback!({
+                await callback?.({
                     text: `Token reserve cannot be found for ${params?.marketName ?? 'main'} market. Please provide a valid token reserve.`,
                     actions: ['KAMINO_WITHDRAW']
                 });
-                return;
+                return{success:false, text:'Reserve not found'};
             }
 
             const obligation = await service?.getUserObligation(params?.marketName!, ObligationTypeTag.Vanilla);
@@ -60,25 +61,23 @@ export const WithdrawAction: Action = {
                 const healthFactor = currentLtv.gt(0) ? liquidationLtv.div(currentLtv) : new Decimal('999');
 
                 if (healthFactor.lt(1.2)) {
-                    await callback!({
+                    await callback?.({
                         text: `Warning: Your health factor is already low (${healthFactor.toFixed(2)}). Withdrawing collateral may put you at a risk of liquidation. Considering repaying debt first.`,
                         actions: ['KAMINO_WITHDRAW'],
                     });
-                    return;
+                    return{success:false, text:`Your health factor is already low ${healthFactor.toFixed(2)}`};
                 }
             }
             const deposit = obligation?.deposits.get(reserve?.address!);
-            const decimalAmount = params?.amount! === 'max' ? new Decimal('999999999') : new Decimal(params?.amount!);
+            const decimalAmount = resolveMax(params.amount,obligation!,reserve);
 
             if (deposit?.amount! < decimalAmount) {
-                await callback!({
+                await callback?.({
                     text: `You don't have enough deposits of ${params?.token}`,
                     actions: ['KAMINO_WITHDRAW']
                 });
-                return;
+                return{success:false, text:`You don't have enough deposits.`};
             }
-
-
 
             const tokenMint = reserve?.getLiquidityMint();
 
@@ -93,18 +92,20 @@ export const WithdrawAction: Action = {
             let amount = params?.amount!;
             let token = params?.token!;
 
-            await callback!({
+            await callback?.({
                 text: `Succesfully withdrawn **${params?.amount === 'max' ? 'all' : amount} ${params?.token}** collateral to your wallet. Transaction: ${tx!.join(', ')}`,
                 actions: ['KAMINO_WITHDRAW'],
                 data: { amount, token, tx }
-            })
+            });
+            return {success:true, text:`Withdraw successful: ${tx}`, data:{amount, token, tx}};
+
         } catch (error) {
-            await callback!({
+            await callback?.({
                 text: `Withdraw failed : ${error}`,
                 actions: ['KAMINO_WITHDRAW'],
                 data: { error: String(error) }
             });
-            return;
+            return {success:false, text: `Withdraw failed: ${error}`};
         }
     },
     examples: [

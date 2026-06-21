@@ -1,6 +1,6 @@
 {
-  "name": "plugin-kamino",
-  "description": "Quick backend-only plugin template for ElizaOS",
+  "name": "@elizaos/plugin-kamino",
+  "description": "Kamino lend, borrow, repay, withdraw etc. features for elizaos",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -8,11 +8,16 @@
   "types": "dist/index.d.ts",
   "packageType": "plugin",
   "platform": "node",
-  "license": "UNLICENSED",
-  "author": "${GITHUB_USERNAME}",
+  "license": "MIT",
+  "author": "codebird-n4vnt",
   "keywords": [
     "plugin",
-    "elizaos"
+    "elizaos",
+    "solana",
+    "kamino",
+    "defi",
+    "lending",
+    "borrowing"
   ],
   "repository": {
     "type": "git",
@@ -20,7 +25,7 @@
   },
   "homepage": "https://elizaos.ai",
   "bugs": {
-    "url": "https://github.com/${GITHUB_USERNAME}/${PLUGINNAME}/issues"
+    "url": "https://github.com/codebird-n4vnt/eilza/issues"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -74,9 +79,13 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "API_KEY": {
-        "type": "string",
-        "description": "API key for the service"
+      "SOLANA_RPC_URL":{
+        "type":"string",
+        "description":"Solana RPC URL"
+      },
+      "SOLANA_PRIVATE_KEY":{
+        "type":"string",
+        "description":"Base58 encoded private key of the wallet to use"
       }
     }
   },

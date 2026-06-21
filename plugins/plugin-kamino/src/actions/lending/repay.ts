@@ -1,8 +1,9 @@
 import { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
 import { KaminoService } from "../../services/kamino";
 import { parseRepayMessage } from "../../utils/parser";
-import { ObligationTypeTag, ReserveKind } from "@kamino-finance/klend-sdk";
+import { ObligationTypeTag } from "@kamino-finance/klend-sdk";
 import Decimal from "decimal.js";
+import { resolveMax } from "../../utils/resolveMax";
 
 export const RepayAction: Action = {
     name: 'KAMINO_REPAY',
@@ -17,7 +18,7 @@ export const RepayAction: Action = {
     validate: async (runtime: IAgentRuntime, message: Memory, state?: State): Promise<boolean> => {
         try {
             const service = runtime.getService<KaminoService>('kamino-service');
-            if (!service?.isInitialized) return false;
+            if (!service?.isInitialized()) return false;
 
             const params = await parseRepayMessage(runtime, message, state);
             if (!params) return false;
@@ -55,30 +56,34 @@ export const RepayAction: Action = {
             
             
             if(!reserve){
-                await callback!({
+                await callback?.({
                     text:`Reserve not found for ${token}`,
                     actions:['KAMINO_REPAY'],
+                    error:true,
                 });
-                return;
+                return{success:false, text:'Reserve not found'};
             }
 
             const tokenMint = reserve?.getLiquidityMint();
-            const amountDecimal = amount === 'max' ? new Decimal('99999999') : new Decimal(amount);
+            const amountDecimal = resolveMax(amount,obligation!,reserve);   
 
             const action = await service?.buildRepayTxns(market?.getName()!, tokenMint!, amountDecimal);
 
             const tx = await service?.sendActionTransaction(action!);
-
-            await callback!({
-                text:`Repayed **${amount} ${token}**. Transaction ${tx}`,
+            service?.invalidateObligationCache(market?.getName()!, ObligationTypeTag.Vanilla);
+            await callback?.({
+                text:`Repayed **${amount==='max'?'all':amount} ${token}**. Transaction ${tx}`,
                 actions:['KAMINO_REPAY'],
                 data:{token,amount,tx}
             });
+            return {success:true, text:`Repay successful : ${tx}`};
         } catch (error) {
-            await callback!({
+            await callback?.({
                 text:`Repay failed :  ${error}`,
-                data:{error}
+                data:{error},
+                error:true,
             });
+            return {success:false, text:`Repay failed : ${error}`};
         }
     },
     examples:[

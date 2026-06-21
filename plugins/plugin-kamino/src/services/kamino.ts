@@ -409,14 +409,14 @@ export class KaminoService extends Service {
             }
 
             const risk: HealthCheckResult['overallRisk'] = healthFactor.lt(1)
-                ? 'liquidatable'
+                ? 'critical'
                 : healthFactor.lt(1.1)
                     ? 'danger'
                     : healthFactor.lt(1.5)
                         ? 'caution'
                         : 'safe'
-            if (risk === 'liquidatable') overallRisk = 'liquidatable';
-            else if (risk === 'danger' && overallRisk !== 'liquidatable') overallRisk = 'danger';
+            if (risk === 'critical') overallRisk = 'critical';
+            else if (risk === 'danger' && overallRisk !== 'critical') overallRisk = 'danger';
             else if (risk === 'caution' && overallRisk === 'safe') overallRisk = 'caution';
 
             const deposits: Array<{
@@ -578,9 +578,7 @@ export class KaminoService extends Service {
             } else{
                 throw error;
             }
-
         }
-
         return signatures;
     }
 

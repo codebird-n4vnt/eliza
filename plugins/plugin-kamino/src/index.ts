@@ -1,4 +1,5 @@
-import { starterPlugin } from './plugin.ts';
+import { KaminoPlugin } from './plugin.ts';
 
-export { starterPlugin, StarterService } from './plugin.ts';
-export default starterPlugin;
+export { KaminoPlugin } from './plugin.ts';
+export { KaminoService } from './services/kamino.ts'
+export default KaminoPlugin;
