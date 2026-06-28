@@ -9,8 +9,8 @@ import {
   type IAgentRuntime,
   type TestSuite,
   logger,
-} from '@elizaos/core';
-import { v4 as uuidv4 } from 'uuid';
+} from "@elizaos/core";
+import { v4 as uuidv4 } from "uuid";
 
 // Define proper interfaces for E2E testing
 interface E2ETestFiles {
@@ -87,75 +87,79 @@ interface E2ETestContent extends Content {
  * This test suite validates the basic functionality of the quick starter plugin.
  */
 export const QuickStarterPluginTestSuite: TestSuite = {
-  name: 'Plugin Quick Starter E2E Tests',
+  name: "Plugin Quick Starter E2E Tests",
   tests: [
     {
-      name: 'plugin_should_be_loaded',
+      name: "plugin_should_be_loaded",
       fn: async (runtime: IAgentRuntime) => {
         // Check if the plugin is registered
-        const plugin = runtime.plugins.find((p: Plugin) => p.name === 'plugin-quick-starter');
+        const plugin = runtime.plugins.find(
+          (p: Plugin) => p.name === "plugin-quick-starter",
+        );
 
         if (!plugin) {
-          throw new Error('Plugin quick-starter is not loaded in the runtime');
+          throw new Error("Plugin quick-starter is not loaded in the runtime");
         }
 
-        logger.info('✓ Plugin quick-starter loaded successfully');
+        logger.info("✓ Plugin quick-starter loaded successfully");
       },
     },
     {
-      name: 'should_have_quick_action_registered',
+      name: "should_have_quick_action_registered",
       fn: async (runtime: IAgentRuntime) => {
         // Check if the quick action is registered
-        const action = runtime.actions.find((a: Action) => a.name === 'QUICK_ACTION');
+        const action = runtime.actions.find(
+          (a: Action) => a.name === "QUICK_ACTION",
+        );
 
         if (!action) {
-          throw new Error('QUICK_ACTION is not registered');
+          throw new Error("QUICK_ACTION is not registered");
         }
 
         // Verify action has required properties
-        if (!action.name || action.name !== 'QUICK_ACTION') {
-          throw new Error('Action name is incorrect');
+        if (!action.name || action.name !== "QUICK_ACTION") {
+          throw new Error("Action name is incorrect");
         }
 
-        if (!action.handler || typeof action.handler !== 'function') {
-          throw new Error('Action handler is not a function');
+        if (!action.handler || typeof action.handler !== "function") {
+          throw new Error("Action handler is not a function");
         }
 
-        logger.info('✓ QUICK_ACTION registered correctly');
+        logger.info("✓ QUICK_ACTION registered correctly");
       },
     },
     {
-      name: 'quick_action_should_execute_successfully',
+      name: "quick_action_should_execute_successfully",
       fn: async (runtime: IAgentRuntime) => {
         // Create a test message
         const testMessage = {
-          id: 'quick-test-1' as UUID,
-          userId: 'test-user' as UUID,
+          id: "quick-test-1" as UUID,
+          userId: "test-user" as UUID,
           agentId: runtime.agentId,
-          entityId: 'test-user' as UUID,
-          roomId: 'quick-test-room' as UUID,
+          entityId: "test-user" as UUID,
+          roomId: "quick-test-room" as UUID,
           content: {
-            text: 'quick test',
+            text: "quick test",
             action: null,
           } as Content,
           createdAt: Date.now(),
         };
 
         let callbackExecuted = false;
-        let responseText = '';
+        let responseText = "";
 
         // Create a callback to capture the response
         const callback: HandlerCallback = async (
           response: Content,
-          files?: E2ETestFiles
+          files?: E2ETestFiles,
         ): Promise<Memory[]> => {
           callbackExecuted = true;
-          responseText = response.text || '';
+          responseText = response.text || "";
           const responseMemory: Memory = {
-            id: 'response-quick' as UUID,
+            id: "response-quick" as UUID,
             entityId: runtime.agentId,
             agentId: runtime.agentId,
-            roomId: 'quick-test-room' as UUID,
+            roomId: "quick-test-room" as UUID,
             content: response,
             createdAt: Date.now(),
             embedding: [],
@@ -164,91 +168,107 @@ export const QuickStarterPluginTestSuite: TestSuite = {
         };
 
         // Get the action
-        const action = runtime.actions.find((a: Action) => a.name === 'QUICK_ACTION');
+        const action = runtime.actions.find(
+          (a: Action) => a.name === "QUICK_ACTION",
+        );
         if (!action) {
-          throw new Error('QUICK_ACTION not found');
+          throw new Error("QUICK_ACTION not found");
         }
 
         // Execute the action handler
-        const result = await action.handler(runtime, testMessage, undefined, {}, callback);
+        const result = await action.handler(
+          runtime,
+          testMessage,
+          undefined,
+          {},
+          callback,
+        );
 
         // Verify the action executed successfully
         if (!result || !result.success) {
-          throw new Error('Quick action did not execute successfully');
+          throw new Error("Quick action did not execute successfully");
         }
 
         if (!callbackExecuted) {
-          throw new Error('Callback was not executed');
+          throw new Error("Callback was not executed");
         }
 
-        if (!responseText || responseText.trim() === '') {
-          throw new Error('Response text is empty');
+        if (!responseText || responseText.trim() === "") {
+          throw new Error("Response text is empty");
         }
 
-        logger.info(`✓ Quick action executed successfully with response: "${responseText}"`);
+        logger.info(
+          `✓ Quick action executed successfully with response: "${responseText}"`,
+        );
       },
     },
     {
-      name: 'quick_provider_should_provide_data',
+      name: "quick_provider_should_provide_data",
       fn: async (runtime: IAgentRuntime) => {
         // Check if the provider is registered
-        const provider = runtime.providers.find((p: Provider) => p.name === 'QUICK_PROVIDER');
+        const provider = runtime.providers.find(
+          (p: Provider) => p.name === "QUICK_PROVIDER",
+        );
 
         if (!provider) {
-          throw new Error('QUICK_PROVIDER is not registered');
+          throw new Error("QUICK_PROVIDER is not registered");
         }
 
         // Test the provider's get method
         const mockMessage = {
-          id: 'provider-test-1' as UUID,
-          userId: 'test-user' as UUID,
+          id: "provider-test-1" as UUID,
+          userId: "test-user" as UUID,
           agentId: runtime.agentId,
-          entityId: 'test-user' as UUID,
-          roomId: 'provider-test-room' as UUID,
-          content: { text: 'test' },
+          entityId: "test-user" as UUID,
+          roomId: "provider-test-room" as UUID,
+          content: { text: "test" },
           createdAt: Date.now(),
         };
 
-        const result = await provider.get(runtime, mockMessage, { values: {}, data: {}, text: '' });
+        const result = await provider.get(runtime, mockMessage, {
+          values: {},
+          data: {},
+          text: "",
+        });
 
         // Verify provider returns data
         if (!result) {
-          throw new Error('Provider returned no result');
+          throw new Error("Provider returned no result");
         }
 
-        if (!result.text || result.text.trim() === '') {
-          throw new Error('Provider returned empty text');
+        if (!result.text || result.text.trim() === "") {
+          throw new Error("Provider returned empty text");
         }
 
         logger.info(`✓ Quick provider returned data: "${result.text}"`);
       },
     },
     {
-      name: 'quick_service_should_be_available',
+      name: "quick_service_should_be_available",
       fn: async (runtime: IAgentRuntime) => {
         // Check if the starter service is available
-        const service = runtime.getService('starter');
+        const service = runtime.getService("starter");
 
         if (!service) {
-          logger.warn('⚠ Starter service not available (optional service)');
+          logger.warn("⚠ Starter service not available (optional service)");
           return;
         }
 
-        logger.info('✓ Starter service is available');
+        logger.info("✓ Starter service is available");
       },
     },
     {
-      name: 'plugin_should_integrate_with_agent_correctly',
+      name: "plugin_should_integrate_with_agent_correctly",
       fn: async (runtime: IAgentRuntime) => {
         // Test that the plugin integrates properly with the agent
         const testMessage = {
-          id: 'integration-test-1' as UUID,
-          userId: 'test-user' as UUID,
+          id: "integration-test-1" as UUID,
+          userId: "test-user" as UUID,
           agentId: runtime.agentId,
-          entityId: 'test-user' as UUID,
-          roomId: 'integration-test-room' as UUID,
+          entityId: "test-user" as UUID,
+          roomId: "integration-test-room" as UUID,
           content: {
-            text: 'test quick plugin integration',
+            text: "test quick plugin integration",
             action: null,
           } as Content,
           createdAt: Date.now(),
@@ -264,28 +284,30 @@ export const QuickStarterPluginTestSuite: TestSuite = {
           async (response: Content): Promise<Memory[]> => {
             responseReceived = true;
             const responseMemory: Memory = {
-              id: 'response-integration' as UUID,
+              id: "response-integration" as UUID,
               entityId: runtime.agentId,
               agentId: runtime.agentId,
-              roomId: 'integration-test-room' as UUID,
+              roomId: "integration-test-room" as UUID,
               content: response,
               createdAt: Date.now(),
               embedding: [],
             };
             return [responseMemory];
-          }
+          },
         );
 
         // Basic integration check - agent should process messages
         if (!responseReceived) {
-          logger.warn('⚠ No response received (this may be normal if no action was triggered)');
+          logger.warn(
+            "⚠ No response received (this may be normal if no action was triggered)",
+          );
         }
 
-        logger.info('✓ Plugin integrates with agent runtime correctly');
+        logger.info("✓ Plugin integrates with agent runtime correctly");
       },
     },
     {
-      name: 'plugin_database_adapter_should_be_registered',
+      name: "plugin_database_adapter_should_be_registered",
       fn: async (runtime: IAgentRuntime) => {
         // Verify that the runtime has a database adapter
         // This is a basic check to ensure the plugin can work with the database
@@ -294,41 +316,43 @@ export const QuickStarterPluginTestSuite: TestSuite = {
           // Try to get the connection - this should exist
           const connection = await runtime.getConnection();
           if (connection) {
-            logger.info('✓ Plugin can access database connection');
+            logger.info("✓ Plugin can access database connection");
           } else {
-            throw new Error('No database connection available');
+            throw new Error("No database connection available");
           }
         } catch (error) {
           // If there's an error getting connection, it might be expected in test environment
-          logger.info('⚠ Database connection test skipped (test environment limitation)');
+          logger.info(
+            "⚠ Database connection test skipped (test environment limitation)",
+          );
         }
       },
     },
     {
-      name: 'plugin_should_handle_errors_gracefully',
+      name: "plugin_should_handle_errors_gracefully",
       fn: async (runtime: IAgentRuntime) => {
         // Test error handling with invalid input
         const invalidMessage = {
-          id: 'error-test-1' as UUID,
-          userId: 'test-user' as UUID,
+          id: "error-test-1" as UUID,
+          userId: "test-user" as UUID,
           agentId: runtime.agentId,
-          entityId: 'test-user' as UUID,
-          roomId: 'error-test-room' as UUID,
+          entityId: "test-user" as UUID,
+          roomId: "error-test-room" as UUID,
           content: null, // Invalid content
           createdAt: Date.now(),
         };
 
         try {
           // Attempt to create memory with invalid message
-          await runtime.createMemory(invalidMessage as any, 'messages', false);
+          await runtime.createMemory(invalidMessage as any, "messages", false);
 
           // If we get here without error, that's also acceptable
-          logger.info('✓ Plugin handled invalid input without crashing');
+          logger.info("✓ Plugin handled invalid input without crashing");
         } catch (error) {
           // Error handling is working
           logger.info(
-            '✓ Plugin properly handles errors:',
-            error instanceof Error ? error.message : String(error)
+            "✓ Plugin properly handles errors:",
+            error instanceof Error ? error.message : String(error),
           );
         }
       },

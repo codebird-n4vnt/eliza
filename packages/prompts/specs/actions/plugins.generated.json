@@ -2044,6 +2044,94 @@
       ]
     },
     {
+      "name": "KAMINO_BORROW",
+      "description": "Borrow tokens from Kamino Lend against existing deposited collateral. Use when the user wants to take a loan, borrow an asset, or leverage their deposits. Supports both variable(float) and fixed rate borrows.",
+      "parameters": [],
+      "similes": [
+        "TAKE_LOAN",
+        "BORROW_FUNDS",
+        "GET_LOAN",
+        "KAMINO_LOAN",
+        "BORROW",
+        "BORROW_FROM_KAMINO"
+      ]
+    },
+    {
+      "name": "KAMINO_DEPOSIT",
+      "description": "Deposit tokens as collateral into Kamino lend. This enables borrowing against the deposited assets. Use when the user wants to collateral before borrowing , or increase their collateral position.",
+      "parameters": [],
+      "similes": [
+        "COLLATERAL_DEPOSIT",
+        "DEPOSIT_ON_KAMINO",
+        "KAMINO_BORROW_DEPOSIT",
+        "SUPPLY_COLLATERAL"
+      ]
+    },
+    {
+      "name": "KAMINO_HEALTH",
+      "description": "Check the health of your Kamino Lend positions across all markets. Shows deposits, borrows, health factor, borrow limit, and liquidation risk. Use when the user asks about their position, risk level, or wants a portfolio overview.",
+      "parameters": [],
+      "similes": [
+        "CHECK_POSITION",
+        "POSITION_STATUS",
+        "LIQUIDATION_RISK",
+        "ACCOUNT_HEALTH",
+        "MY_LOANS"
+      ]
+    },
+    {
+      "name": "KAMINO_LEND",
+      "description": "Lend (pure supply) tokens into Kamino Lend to earn supply APY. This does NOT use the tokens as collateral for borrowing. Use when the user wants to earn passive yield, supply liquidity, or lend assets without borrowing against them. Or if the user wants to deposit to lending pool.",
+      "parameters": [],
+      "similes": ["LEND_ON_KAMINO", "DEPOSIT_LEND", "EARN_YIELD"]
+    },
+    {
+      "name": "KAMINO_LEND_WITHDRAW",
+      "description": "Withdraw deposits from a lending position in Kamino. Use when the user wants to exit their lending/supply position and reclaim their tokens plus earned interest.",
+      "parameters": [],
+      "similes": [
+        "LEND_WITHDRAW",
+        "WITHDRAW_LEND_DEPOSITS",
+        "WITHDRAW_FROM_KAMINO_LEND",
+        "WITHDRAW_SUPPLY"
+      ]
+    },
+    {
+      "name": "KAMINO_REPAY",
+      "description": "Repay borrowed debt in Kamino Lend. Use when the user wants to pay back a loan, reduce their debt, or close a borrowing position partially or fully.",
+      "parameters": [],
+      "similes": [
+        "DEBT_REPAY",
+        "LOAN_REPAY",
+        "KAMINO_LOAN_REPAY",
+        "REPAY_BORROWS",
+        "PAY_BACK"
+      ]
+    },
+    {
+      "name": "KAMINO_RESERVES",
+      "description": "List all available Kamino Lend reserves with current supply APY, borrow APY, LTV, and available liquidity. Use when the user asks about lending rates, borrowing rates, or wants to see what assets are available.",
+      "parameters": [],
+      "similes": [
+        "LIST_KAMINO_RESERVES",
+        "SHOW_KAMINO_RESERVES",
+        "KAMINO_APYS",
+        "WHAT_ARE_THE_RATES",
+        "LENDING_RATES"
+      ]
+    },
+    {
+      "name": "KAMINO_WITHDRAW",
+      "description": "Withdraw a lending deposit from Kamino. Use when the user wants to exit their ",
+      "parameters": [],
+      "similes": [
+        "WITHDRAW_COLLATERAL",
+        "WTIHDRAW",
+        "REMOVE_COLLATERAL",
+        "WITHDRAW_FROM_KAMINO"
+      ]
+    },
+    {
       "name": "LINEAR",
       "description": "Manage Linear issues/comments/activity. Ops: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Infer op if omitted.",
       "parameters": [

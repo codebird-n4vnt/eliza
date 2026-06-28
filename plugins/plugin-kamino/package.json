@@ -44,9 +44,12 @@
     "package.json"
   ],
   "dependencies": {
-    "@elizaos/core": "1.7.2",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-google-genai": "^1.1.0",
+    "@elizaos/plugin-groq": "^1.0.4",
+    "@elizaos/plugin-openai": "^1.6.0",
     "@kamino-finance/farms-sdk": "^3.2.26",
-    "@kamino-finance/klend-sdk": "^8.0.2",
+    "@kamino-finance/klend-sdk": "^9.0.1",
     "@kamino-finance/kliquidity-sdk": "^13.0.0",
     "@kamino-finance/limo-sdk": "^2.0.4",
     "@solana/kit": "^3.0.3",
@@ -79,13 +82,13 @@
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {
-      "SOLANA_RPC_URL":{
-        "type":"string",
-        "description":"Solana RPC URL"
+      "SOLANA_RPC_URL": {
+        "type": "string",
+        "description": "Solana RPC URL"
       },
-      "SOLANA_PRIVATE_KEY":{
-        "type":"string",
-        "description":"Base58 encoded private key of the wallet to use"
+      "SOLANA_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Base58 encoded private key of the wallet to use"
       }
     }
   },

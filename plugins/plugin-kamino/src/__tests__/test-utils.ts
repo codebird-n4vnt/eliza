@@ -1,4 +1,4 @@
-import { mock, spyOn } from 'bun:test';
+import { mock, spyOn } from "bun:test";
 import {
   type IAgentRuntime,
   type Memory,
@@ -11,7 +11,7 @@ import {
   ModelType,
   asUUID,
   logger,
-} from '@elizaos/core';
+} from "@elizaos/core";
 
 /**
  * Creates a UUID for testing
@@ -23,13 +23,15 @@ export function createUUID(): UUID {
 /**
  * Creates a test character
  */
-export function createTestCharacter(overrides: Partial<Character> = {}): Character {
+export function createTestCharacter(
+  overrides: Partial<Character> = {},
+): Character {
   return {
     id: createUUID(),
-    name: 'Test Character',
-    username: 'test-character',
-    bio: 'A test character for unit testing',
-    system: 'You are a helpful assistant for testing.',
+    name: "Test Character",
+    username: "test-character",
+    bio: "A test character for unit testing",
+    system: "You are a helpful assistant for testing.",
     plugins: [],
     settings: {},
     messageExamples: [],
@@ -52,8 +54,8 @@ export function createTestMemory(overrides: Partial<Memory> = {}): Memory {
     entityId: createUUID(),
     roomId: createUUID(),
     content: {
-      text: 'Test message',
-      source: 'test',
+      text: "Test message",
+      source: "test",
     },
     createdAt: now,
     ...overrides,
@@ -68,19 +70,19 @@ export function createTestState(overrides: Partial<State> = {}): State {
     agentId: createUUID(),
     roomId: createUUID(),
     userId: createUUID(),
-    bio: 'Test bio',
-    lore: 'Test lore',
-    userName: 'Test User',
-    userBio: 'Test user bio',
-    actors: '',
-    recentMessages: '',
-    recentInteractions: '',
-    goals: 'Test goals',
-    image: '',
-    messageDirections: '',
+    bio: "Test bio",
+    lore: "Test lore",
+    userName: "Test User",
+    userBio: "Test user bio",
+    actors: "",
+    recentMessages: "",
+    recentInteractions: "",
+    goals: "Test goals",
+    image: "",
+    messageDirections: "",
     values: {},
     data: {},
-    text: '',
+    text: "",
     ...overrides,
   };
 }
@@ -88,7 +90,9 @@ export function createTestState(overrides: Partial<State> = {}): State {
 /**
  * Creates a properly typed mock runtime
  */
-export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
+export function createMockRuntime(
+  overrides: Partial<IAgentRuntime> = {},
+): IAgentRuntime {
   const agentId = overrides.agentId || createUUID();
   const character = overrides.character || createTestCharacter();
 
@@ -139,7 +143,9 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     getMemoriesByIds: mock().mockResolvedValue([]),
     getMemoriesByRoomIds: mock().mockResolvedValue([]),
     searchMemories: mock().mockResolvedValue([]),
-    addEmbeddingToMemory: mock().mockImplementation(async (memory: Memory) => memory),
+    addEmbeddingToMemory: mock().mockImplementation(
+      async (memory: Memory) => memory,
+    ),
     queueEmbeddingGeneration: mock().mockResolvedValue(undefined),
     getAllMemories: mock().mockResolvedValue([]),
     clearAllAgentMemories: mock().mockResolvedValue(undefined),
@@ -197,11 +203,11 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     getModel: mock().mockReturnValue(undefined),
     useModel: mock().mockImplementation(async (modelType: string) => {
       if (modelType === ModelType.TEXT_SMALL) {
-        return 'Never gonna give you up, never gonna let you down';
+        return "Never gonna give you up, never gonna let you down";
       } else if (modelType === ModelType.TEXT_LARGE) {
-        return 'Never gonna make you cry, never gonna say goodbye';
+        return "Never gonna make you cry, never gonna say goodbye";
       }
-      return 'Default model response';
+      return "Default model response";
     }),
 
     // Event methods
@@ -212,7 +218,7 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
     // Settings methods
     setSetting: mock().mockReturnValue(undefined),
     getSetting: mock().mockImplementation((key: string) => {
-      if (key === 'EXAMPLE_PLUGIN_VARIABLE') return 'test-value';
+      if (key === "EXAMPLE_PLUGIN_VARIABLE") return "test-value";
       return null;
     }),
 
@@ -287,10 +293,10 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
 
   // Setup logger spies if not already overridden
   if (!overrides.logger) {
-    spyOn(logger, 'info').mockImplementation(() => {});
-    spyOn(logger, 'warn').mockImplementation(() => {});
-    spyOn(logger, 'error').mockImplementation(() => {});
-    spyOn(logger, 'debug').mockImplementation(() => {});
+    spyOn(logger, "info").mockImplementation(() => {});
+    spyOn(logger, "warn").mockImplementation(() => {});
+    spyOn(logger, "error").mockImplementation(() => {});
+    spyOn(logger, "debug").mockImplementation(() => {});
   }
 
   return mockRuntime;
@@ -302,25 +308,25 @@ export function createMockRuntime(overrides: Partial<IAgentRuntime> = {}): IAgen
 export const testFixtures = {
   messagePayload: (overrides: any = {}) => ({
     content: {
-      text: 'Test message',
-      source: 'test',
+      text: "Test message",
+      source: "test",
     },
     userId: createUUID(),
     roomId: createUUID(),
     runtime: createMockRuntime(),
-    source: 'test',
+    source: "test",
     ...overrides,
   }),
 
   worldPayload: (overrides: any = {}) => ({
     content: {
-      text: 'World event',
-      world: 'test-world',
+      text: "World event",
+      world: "test-world",
     },
     userId: createUUID(),
     roomId: createUUID(),
     runtime: createMockRuntime(),
-    source: 'test',
+    source: "test",
     ...overrides,
   }),
 };
@@ -329,7 +335,7 @@ export const testFixtures = {
  * Type guard to check if a value is a mock function
  */
 export function isMockFunction(value: any): value is ReturnType<typeof mock> {
-  return value && typeof value.mock === 'object';
+  return value && typeof value.mock === "object";
 }
 
 /**
@@ -337,21 +343,23 @@ export function isMockFunction(value: any): value is ReturnType<typeof mock> {
  */
 export function assertSpyCalledWith(spy: any, ...args: any[]) {
   if (!isMockFunction(spy)) {
-    throw new Error('Not a mock function');
+    throw new Error("Not a mock function");
   }
 
   const calls = spy.mock.calls;
   const found = calls.some((call: any[]) =>
     args.every((arg, index) => {
-      if (typeof arg === 'object' && arg !== null) {
+      if (typeof arg === "object" && arg !== null) {
         return JSON.stringify(arg) === JSON.stringify(call[index]);
       }
       return arg === call[index];
-    })
+    }),
   );
 
   if (!found) {
-    throw new Error(`Spy was not called with expected arguments: ${JSON.stringify(args)}`);
+    throw new Error(
+      `Spy was not called with expected arguments: ${JSON.stringify(args)}`,
+    );
   }
 }
 
@@ -359,8 +367,8 @@ export function assertSpyCalledWith(spy: any, ...args: any[]) {
  * Setup logger spies for testing
  */
 export function setupLoggerSpies() {
-  spyOn(logger, 'info').mockImplementation(() => {});
-  spyOn(logger, 'warn').mockImplementation(() => {});
-  spyOn(logger, 'error').mockImplementation(() => {});
-  spyOn(logger, 'debug').mockImplementation(() => {});
+  spyOn(logger, "info").mockImplementation(() => {});
+  spyOn(logger, "warn").mockImplementation(() => {});
+  spyOn(logger, "error").mockImplementation(() => {});
+  spyOn(logger, "debug").mockImplementation(() => {});
 }

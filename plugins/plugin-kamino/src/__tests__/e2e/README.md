@@ -40,10 +40,10 @@ E2E tests are integrated directly into your plugin without the need for an inter
 
 ```typescript
 // src/plugin.ts
-import { QuickStarterPluginTestSuite } from './__tests__/e2e/plugin-quick-starter.e2e';
+import { QuickStarterPluginTestSuite } from "./__tests__/e2e/plugin-quick-starter.e2e";
 
 export const quickPlugin: Plugin = {
-  name: 'plugin-quick-starter',
+  name: "plugin-quick-starter",
   // ... other properties
   tests: [QuickStarterPluginTestSuite], // Direct import!
 };

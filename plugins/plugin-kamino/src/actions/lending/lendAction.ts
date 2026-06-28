@@ -1,97 +1,124 @@
-import { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  Action,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 import { KaminoService } from "../../services/kamino";
 import { parseLendMessage } from "../../utils/parser";
 import Decimal from "decimal.js";
 import { ObligationTypeTag } from "@kamino-finance/klend-sdk";
 
-
 export const LendAction: Action = {
-    name : 'KAMINO_LEND',
-    similes: [
-        'LEND_ON_KAMINO',
-        'DEPOSIT_LEND',
-        'EARN_YIELD',
-    ],
-    description: 'Lend (pure supply) tokens into Kamino Lend to earn supply APY. This does NOT use the tokens as collateral for borrowing. Use when the user wants to earn passive yield, supply liquidity, or lend assets without borrowing against them. Or if the user wants to deposit to lending pool.',
-    validate: async (runtime:IAgentRuntime,memory:Memory):Promise<boolean> =>{
-        const service = runtime.getService<KaminoService>('kamino-service');
-        const isInitialized = service?.isInitialized() ??  false;
-        const isMarketAvailable = service?.getAllMarkets().size! > 0 ? true: false;
-        const reserves = await service?.getAllReserves();
-        const areReservesAvailable = reserves!.length>0?true:false;
-        const isRpc = service?.getRpc() ? true : false;        
-        return isInitialized && isMarketAvailable && areReservesAvailable && isRpc;
-    },
-    handler: async (runtime:IAgentRuntime,memory:Memory, state?:State, options?:any, callback?:HandlerCallback) => {
-        const service = runtime.getService<KaminoService>('kamino-service');
-        
-        try {
-            const params = await parseLendMessage(runtime,memory,state);
-            if(!params){
-                await callback?.({
-                    text:'I need to know what token and how much you want to lend. For example: "Lend 100 USDC" Or "Supply 50 SOL for yield".' ,
-                    actions: ['KAMINO_LEND'],
-                    error:true,
-                });
-                return{success:false, text:'Token and amount not provided.'};
-            }
-            const {token,amount, marketName} = params;
-            const market = marketName ? service?.getMarket(marketName): service?.getDefaultMarket();
-            if(!market){
-                await callback?.({
-                    text:`Market "${marketName}" not found.`,
-                    actions: ['KAMINO_LEND'],
-                    error:true,
-                });
-                return{success:false, text:'Market not found'};
-            }
+  name: "KAMINO_LEND",
+  similes: ["LEND_ON_KAMINO", "DEPOSIT_LEND", "EARN_YIELD"],
+  description:
+    "Lend (pure supply) tokens into Kamino Lend to earn supply APY. This does NOT use the tokens as collateral for borrowing. Use when the user wants to earn passive yield, supply liquidity, or lend assets without borrowing against them. Or if the user wants to deposit to lending pool.",
+  validate: async (
+    runtime: IAgentRuntime,
+    memory: Memory,
+  ): Promise<boolean> => {
+    const service = runtime.getService<KaminoService>("kamino-service");
+    const isInitialized = service?.isInitialized() ?? false;
+    const isMarketAvailable = service?.getAllMarkets().size! > 0 ? true : false;
+    const reserves = await service?.getAllReserves();
+    const areReservesAvailable = reserves!.length > 0 ? true : false;
+    const isRpc = service?.getRpc() ? true : false;
+    return isInitialized && isMarketAvailable && areReservesAvailable && isRpc;
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    memory: Memory,
+    state?: State,
+    options?: any,
+    callback?: HandlerCallback,
+  ) => {
+    const service = runtime.getService<KaminoService>("kamino-service");
 
-            const reserve = market.getFloatRateReserveBySymbol(token);
-            if(!reserve){
-                await callback?.({
-                    text: `Reserve for ${token} not found in market ${market.getName()}.`,
-                    actions: ['KAMINO_LEND'],
-                    error:true,
-                });
-                return{success:false, text:'Reserve not found.'};
-            }
+    try {
+      const params = await parseLendMessage(runtime, memory, state);
+      if (!params) {
+        await callback?.({
+          text: 'I need to know what token and how much you want to lend. For example: "Lend 100 USDC" Or "Supply 50 SOL for yield".',
+          actions: ["KAMINO_LEND"],
+          error: true,
+        });
+        return { success: false, text: "Token and amount not provided." };
+      }
+      const { token, amount, marketName } = params;
+      const market = marketName
+        ? service?.getMarket(marketName)
+        : service?.getDefaultMarket();
+      if (!market) {
+        await callback?.({
+          text: `Market "${marketName}" not found.`,
+          actions: ["KAMINO_LEND"],
+          error: true,
+        });
+        return { success: false, text: "Market not found" };
+      }
 
-            const tokenMint = reserve.getLiquidityMint();
-            const amountDecimal = new Decimal(amount);
+      const reserve = market.getFloatRateReserveBySymbol(token);
+      if (!reserve) {
+        await callback?.({
+          text: `Reserve for ${token} not found in market ${market.getName()}.`,
+          actions: ["KAMINO_LEND"],
+          error: true,
+        });
+        return { success: false, text: "Reserve not found." };
+      }
 
-            const action = await service?.buildLendTxns(
-                marketName || 'default',
-                tokenMint,
-                amountDecimal
-            );
-            const tx = await service?.sendActionTransaction(action!);
+      const tokenMint = reserve.getLiquidityMint();
+      const amountDecimal = new Decimal(amount);
 
-            service?.invalidateObligationCache(marketName || 'default', ObligationTypeTag.Lending);
+      const action = await service?.buildLendTxns(
+        marketName || "default",
+        tokenMint,
+        amountDecimal,
+      );
+      const tx = await service?.sendActionTransaction(action!);
 
-            await callback!({
-                text:`Lending successful! **${amount} ${token}** deposited into Kamino Lend.\n\nTransaction: ${tx!.join(', ')}`,
-                actions: ['KAMINO_LEND'],
-                data: {token,amount,tx},
-            })
-            return {success:true,text:`Lending successful : ${tx}`}
-        } catch (error) {
-            await callback?.({
-                text:`Lending failed: ${error}`,
-                actions:['KAMINO_LEND'],
-                data: { error: String(error)}
-            });
-            return {success:false, text:String(error)}
-        }
-    },
-    examples: [
+      service?.invalidateObligationCache(
+        marketName || "default",
+        ObligationTypeTag.Lending,
+      );
+
+      await callback!({
+        text: `Lending successful! **${amount} ${token}** deposited into Kamino Lend.\n\nTransaction: ${tx!.join(", ")}`,
+        actions: ["KAMINO_LEND"],
+        data: { token, amount, tx },
+      });
+      return { success: true, text: `Lending successful : ${tx}` };
+    } catch (error) {
+      await callback?.({
+        text: `Lending failed: ${error}`,
+        actions: ["KAMINO_LEND"],
+        data: { error: String(error) },
+      });
+      return { success: false, text: String(error) };
+    }
+  },
+  examples: [
     [
-      { name: '{{user1}}', content: { text: 'Lend 100 USDC' } },
-      { name: '{{agentName}}', content: { text: 'Successfully lent 100 USDC into Kamino Lend...', actions: ['KAMINO_LEND'] } },
+      { name: "{{user1}}", content: { text: "Lend 100 USDC" } },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Successfully lent 100 USDC into Kamino Lend...",
+          actions: ["KAMINO_LEND"],
+        },
+      },
     ],
     [
-      { name: '{{user1}}', content: { text: 'Supply 50 SOL for yield' } },
-      { name: '{{agentName}}', content: { text: 'Successfully supplied 50 SOL...', actions: ['KAMINO_LEND'] } },
+      { name: "{{user1}}", content: { text: "Supply 50 SOL for yield" } },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Successfully supplied 50 SOL...",
+          actions: ["KAMINO_LEND"],
+        },
+      },
     ],
   ],
-        
-}
+};

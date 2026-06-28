@@ -1,5 +1,14 @@
-import { describe, expect, it, spyOn, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
-import { starterPlugin, StarterService } from '../index';
+import {
+  describe,
+  expect,
+  it,
+  spyOn,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+} from "bun:test";
+import { starterPlugin, StarterService } from "../index";
 import {
   type IAgentRuntime,
   type Memory,
@@ -10,15 +19,15 @@ import {
   logger,
   EventType,
   Action,
-} from '@elizaos/core';
-import dotenv from 'dotenv';
+} from "@elizaos/core";
+import dotenv from "dotenv";
 import {
   createMockRuntime,
   createTestMemory,
   createTestState,
   createUUID,
   testFixtures,
-} from './test-utils';
+} from "./test-utils";
 
 // Define proper interfaces for test mocking
 interface MockLoggerMethod {
@@ -57,18 +66,18 @@ dotenv.config();
 
 // Need to spy on logger
 beforeAll(() => {
-  spyOn(logger, 'info');
-  spyOn(logger, 'error');
-  spyOn(logger, 'warn');
-  spyOn(logger, 'debug');
+  spyOn(logger, "info");
+  spyOn(logger, "error");
+  spyOn(logger, "warn");
+  spyOn(logger, "debug");
 });
 
 afterAll(() => {
   // No global restore needed in bun:test
 });
 
-describe('Plugin Configuration', () => {
-  it('should have correct plugin metadata', () => {
+describe("Plugin Configuration", () => {
+  it("should have correct plugin metadata", () => {
     // Check that plugin has required metadata (values will change when template is used)
     expect(starterPlugin.name).toBeDefined();
     expect(starterPlugin.name).toMatch(/^[a-z0-9-]+$/); // Valid plugin name format
@@ -88,17 +97,17 @@ describe('Plugin Configuration', () => {
     expect(starterPlugin.events).toBeDefined();
   });
 
-  it('should initialize with valid configuration', async () => {
+  it("should initialize with valid configuration", async () => {
     const runtime = createMockRuntime();
-    const config = { EXAMPLE_PLUGIN_VARIABLE: 'test-value' };
+    const config = { EXAMPLE_PLUGIN_VARIABLE: "test-value" };
 
     if (starterPlugin.init) {
       await starterPlugin.init(config, runtime);
-      expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe('test-value');
+      expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe("test-value");
     }
   });
 
-  it('should handle initialization without config', async () => {
+  it("should handle initialization without config", async () => {
     const runtime = createMockRuntime();
 
     if (starterPlugin.init) {
@@ -107,36 +116,38 @@ describe('Plugin Configuration', () => {
     }
   });
 
-  it('should throw error for invalid configuration', async () => {
+  it("should throw error for invalid configuration", async () => {
     const runtime = createMockRuntime();
     const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: 123 }; // Should be string
 
     if (starterPlugin.init) {
-      await expect(starterPlugin.init(invalidConfig as PluginConfig, runtime)).rejects.toThrow(
-        'Invalid plugin configuration'
-      );
+      await expect(
+        starterPlugin.init(invalidConfig as PluginConfig, runtime),
+      ).rejects.toThrow("Invalid plugin configuration");
     }
   });
 
-  it('should handle ZodError with issues array correctly', async () => {
+  it("should handle ZodError with issues array correctly", async () => {
     const runtime = createMockRuntime();
-    const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: '' }; // Empty string violates min(1)
+    const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: "" }; // Empty string violates min(1)
 
     if (starterPlugin.init) {
       try {
         await starterPlugin.init(invalidConfig, runtime);
-        throw new Error('Should have thrown error');
+        throw new Error("Should have thrown error");
       } catch (error) {
         expect(error).toBeInstanceOf(Error);
         const errorMessage = (error as Error).message;
-        expect(errorMessage).toContain('Invalid plugin configuration');
+        expect(errorMessage).toContain("Invalid plugin configuration");
         // Should use error.issues, not error.errors
-        expect(errorMessage).toContain('Example plugin variable is not provided');
+        expect(errorMessage).toContain(
+          "Example plugin variable is not provided",
+        );
       }
     }
   });
 
-  it('should handle ZodError with fallback for undefined issues', async () => {
+  it("should handle ZodError with fallback for undefined issues", async () => {
     const runtime = createMockRuntime();
     // Test that the error handling doesn't crash if issues is somehow undefined
     const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: null };
@@ -144,20 +155,20 @@ describe('Plugin Configuration', () => {
     if (starterPlugin.init) {
       try {
         await starterPlugin.init(invalidConfig as any, runtime);
-        throw new Error('Should have thrown error');
+        throw new Error("Should have thrown error");
       } catch (error) {
         expect(error).toBeInstanceOf(Error);
         const errorMessage = (error as Error).message;
         // Should either show specific error or fallback message
-        expect(errorMessage).toContain('Invalid plugin configuration');
+        expect(errorMessage).toContain("Invalid plugin configuration");
       }
     }
   });
 
-  it('should handle non-ZodError exceptions', async () => {
+  it("should handle non-ZodError exceptions", async () => {
     const runtime = createMockRuntime();
     // Pass a config that will cause validation but won't be a ZodError
-    const config = { EXAMPLE_PLUGIN_VARIABLE: 'valid-value' };
+    const config = { EXAMPLE_PLUGIN_VARIABLE: "valid-value" };
 
     if (starterPlugin.init) {
       // This should succeed without throwing
@@ -168,12 +179,12 @@ describe('Plugin Configuration', () => {
         error = e as Error;
       }
       expect(error).toBeNull();
-      expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe('valid-value');
+      expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe("valid-value");
     }
   });
 });
 
-describe('Hello World Action', () => {
+describe("Hello World Action", () => {
   let runtime: IAgentRuntime;
   let helloWorldAction: Action;
 
@@ -189,50 +200,65 @@ describe('Hello World Action', () => {
     mockLogger.warn.calls = [];
   });
 
-  it('should have hello world action', () => {
+  it("should have hello world action", () => {
     expect(helloWorldAction).toBeDefined();
-    expect(helloWorldAction?.name).toBe('QUICK_ACTION');
+    expect(helloWorldAction?.name).toBe("QUICK_ACTION");
   });
 
-  it('should always validate messages (current implementation)', async () => {
+  it("should always validate messages (current implementation)", async () => {
     if (!helloWorldAction?.validate) {
-      throw new Error('Hello world action validate not found');
+      throw new Error("Hello world action validate not found");
     }
 
-    const validMessages = ['say hello', 'hello world', 'Please say HELLO', 'can you say hello?'];
+    const validMessages = [
+      "say hello",
+      "hello world",
+      "Please say HELLO",
+      "can you say hello?",
+    ];
 
     // The current implementation always returns true
     // This test documents the actual behavior
     for (const text of validMessages) {
       const message = createTestMemory({
-        content: { text, source: 'test' },
+        content: { text, source: "test" },
       });
       const isValid = await helloWorldAction.validate(runtime, message);
       expect(isValid).toBe(true);
     }
   });
 
-  it('should properly validate hello messages', async () => {
+  it("should properly validate hello messages", async () => {
     if (!helloWorldAction?.validate) {
-      throw new Error('Hello world action validate not found');
+      throw new Error("Hello world action validate not found");
     }
 
     // The current implementation always returns true
     // Test that it accepts all messages
-    const helloMessages = ['hello', 'hi there', 'hey!', 'greetings', 'howdy partner'];
+    const helloMessages = [
+      "hello",
+      "hi there",
+      "hey!",
+      "greetings",
+      "howdy partner",
+    ];
     for (const text of helloMessages) {
       const message = createTestMemory({
-        content: { text, source: 'test' },
+        content: { text, source: "test" },
       });
       const isValid = await helloWorldAction.validate(runtime, message);
       expect(isValid).toBe(true);
     }
 
     // Should also accept non-hello messages since validate always returns true
-    const nonHelloMessages = ['goodbye', 'what is the weather', 'tell me a joke'];
+    const nonHelloMessages = [
+      "goodbye",
+      "what is the weather",
+      "tell me a joke",
+    ];
     for (const text of nonHelloMessages) {
       const message = createTestMemory({
-        content: { text, source: 'test' },
+        content: { text, source: "test" },
       });
       const isValid = await helloWorldAction.validate(runtime, message);
       expect(isValid).toBe(true);
@@ -240,33 +266,36 @@ describe('Hello World Action', () => {
 
     // Test empty string - also returns true
     const emptyMessage = createTestMemory({
-      content: { text: '', source: 'test' },
+      content: { text: "", source: "test" },
     });
     const isEmptyValid = await helloWorldAction.validate(runtime, emptyMessage);
     expect(isEmptyValid).toBe(true);
   });
 
-  it('should validate even without text content', async () => {
+  it("should validate even without text content", async () => {
     if (!helloWorldAction?.validate) {
-      throw new Error('Hello world action validate not found');
+      throw new Error("Hello world action validate not found");
     }
 
     const messageWithoutText = createTestMemory({
-      content: { source: 'test' } as Content,
+      content: { source: "test" } as Content,
     });
 
-    const isValid = await helloWorldAction.validate(runtime, messageWithoutText);
+    const isValid = await helloWorldAction.validate(
+      runtime,
+      messageWithoutText,
+    );
     // Always returns true since validate always returns true
     expect(isValid).toBe(true);
   });
 
-  it('should handle hello world action with callback', async () => {
+  it("should handle hello world action with callback", async () => {
     if (!helloWorldAction?.handler) {
-      throw new Error('Hello world action handler not found');
+      throw new Error("Hello world action handler not found");
     }
 
     const message = createTestMemory({
-      content: { text: 'say hello', source: 'test' },
+      content: { text: "say hello", source: "test" },
     });
 
     let callbackContent: TestCallbackContent | null = null;
@@ -275,33 +304,39 @@ describe('Hello World Action', () => {
       return [];
     };
 
-    const result = await helloWorldAction.handler(runtime, message, undefined, undefined, callback);
+    const result = await helloWorldAction.handler(
+      runtime,
+      message,
+      undefined,
+      undefined,
+      callback,
+    );
 
-    expect(result).toHaveProperty('text', 'Hello world!');
-    expect(result).toHaveProperty('success', true);
-    expect(result).toHaveProperty('data');
+    expect(result).toHaveProperty("text", "Hello world!");
+    expect(result).toHaveProperty("success", true);
+    expect(result).toHaveProperty("data");
     const typedResult = result as TestActionResult;
-    expect(typedResult.data).toHaveProperty('actions', ['QUICK_ACTION']);
-    expect(typedResult.data).toHaveProperty('source', 'test');
+    expect(typedResult.data).toHaveProperty("actions", ["QUICK_ACTION"]);
+    expect(typedResult.data).toHaveProperty("source", "test");
 
     expect(callbackContent).toEqual({
-      text: 'Hello world!',
-      actions: ['QUICK_ACTION'],
-      source: 'test',
+      text: "Hello world!",
+      actions: ["QUICK_ACTION"],
+      source: "test",
     });
   });
 
-  it('should handle errors gracefully', async () => {
+  it("should handle errors gracefully", async () => {
     if (!helloWorldAction?.handler) {
-      throw new Error('Hello world action handler not found');
+      throw new Error("Hello world action handler not found");
     }
 
     const message = createTestMemory({
-      content: { text: 'say hello', source: 'test' },
+      content: { text: "say hello", source: "test" },
     });
 
     const errorCallback: HandlerCallback = async () => {
-      throw new Error('Callback error');
+      throw new Error("Callback error");
     };
 
     const result = await helloWorldAction.handler(
@@ -309,23 +344,23 @@ describe('Hello World Action', () => {
       message,
       undefined,
       undefined,
-      errorCallback
+      errorCallback,
     );
 
-    expect(result).toHaveProperty('success', false);
-    expect(result).toHaveProperty('error');
+    expect(result).toHaveProperty("success", false);
+    expect(result).toHaveProperty("error");
     const typedResult = result as TestActionResult;
-    expect(typedResult.error?.message).toBe('Callback error');
+    expect(typedResult.error?.message).toBe("Callback error");
     // Quick-starter plugin doesn't log errors
   });
 
-  it('should handle missing callback gracefully', async () => {
+  it("should handle missing callback gracefully", async () => {
     if (!helloWorldAction?.handler) {
-      throw new Error('Hello world action handler not found');
+      throw new Error("Hello world action handler not found");
     }
 
     const message = createTestMemory({
-      content: { text: 'say hello', source: 'test' },
+      content: { text: "say hello", source: "test" },
     });
 
     const result = await helloWorldAction.handler(
@@ -333,33 +368,39 @@ describe('Hello World Action', () => {
       message,
       undefined,
       undefined,
-      undefined
+      undefined,
     );
 
-    expect(result).toHaveProperty('text', 'Hello world!');
-    expect(result).toHaveProperty('success', true);
+    expect(result).toHaveProperty("text", "Hello world!");
+    expect(result).toHaveProperty("success", true);
   });
 
-  it('should handle state parameter correctly', async () => {
+  it("should handle state parameter correctly", async () => {
     if (!helloWorldAction?.handler) {
-      throw new Error('Hello world action handler not found');
+      throw new Error("Hello world action handler not found");
     }
 
     const message = createTestMemory({
-      content: { text: 'say hello', source: 'test' },
+      content: { text: "say hello", source: "test" },
     });
 
     const state = createTestState({
-      values: { customValue: 'test-state' },
+      values: { customValue: "test-state" },
     });
 
-    const result = await helloWorldAction.handler(runtime, message, state, undefined, undefined);
+    const result = await helloWorldAction.handler(
+      runtime,
+      message,
+      state,
+      undefined,
+      undefined,
+    );
 
-    expect(result).toHaveProperty('success', true);
+    expect(result).toHaveProperty("success", true);
   });
 });
 
-describe('Hello World Provider', () => {
+describe("Hello World Provider", () => {
   const provider = starterPlugin.providers?.[0];
   let runtime: IAgentRuntime;
 
@@ -367,14 +408,14 @@ describe('Hello World Provider', () => {
     runtime = createMockRuntime();
   });
 
-  it('should have hello world provider', () => {
+  it("should have hello world provider", () => {
     expect(provider).toBeDefined();
-    expect(provider?.name).toBe('QUICK_PROVIDER');
+    expect(provider?.name).toBe("QUICK_PROVIDER");
   });
 
-  it('should provide hello world data', async () => {
+  it("should provide hello world data", async () => {
     if (!provider?.get) {
-      throw new Error('Hello world provider not found');
+      throw new Error("Hello world provider not found");
     }
 
     const message = createTestMemory();
@@ -382,16 +423,16 @@ describe('Hello World Provider', () => {
 
     const result = await provider.get(runtime, message, state);
 
-    expect(result).toHaveProperty('text', 'I am a provider');
-    expect(result).toHaveProperty('values');
+    expect(result).toHaveProperty("text", "I am a provider");
+    expect(result).toHaveProperty("values");
     expect(result.values).toEqual({});
-    expect(result).toHaveProperty('data');
+    expect(result).toHaveProperty("data");
     expect(result.data).toEqual({});
   });
 
-  it('should provide consistent structure across calls', async () => {
+  it("should provide consistent structure across calls", async () => {
     if (!provider?.get) {
-      throw new Error('Hello world provider not found');
+      throw new Error("Hello world provider not found");
     }
 
     const message = createTestMemory();
@@ -409,77 +450,77 @@ describe('Hello World Provider', () => {
   });
 });
 
-describe('Model Handlers', () => {
+describe("Model Handlers", () => {
   let runtime: IAgentRuntime;
 
   beforeEach(() => {
     runtime = createMockRuntime();
   });
 
-  it('should handle TEXT_SMALL model', async () => {
+  it("should handle TEXT_SMALL model", async () => {
     const handler = starterPlugin.models?.[ModelType.TEXT_SMALL];
     if (!handler) {
-      throw new Error('TEXT_SMALL model handler not found');
+      throw new Error("TEXT_SMALL model handler not found");
     }
 
-    const result = await handler(runtime, { prompt: 'Test prompt' });
+    const result = await handler(runtime, { prompt: "Test prompt" });
 
-    expect(result).toContain('Never gonna give you up');
+    expect(result).toContain("Never gonna give you up");
   });
 
-  it('should handle TEXT_LARGE model with custom parameters', async () => {
+  it("should handle TEXT_LARGE model with custom parameters", async () => {
     const handler = starterPlugin.models?.[ModelType.TEXT_LARGE];
     if (!handler) {
-      throw new Error('TEXT_LARGE model handler not found');
+      throw new Error("TEXT_LARGE model handler not found");
     }
 
     const result = await handler(runtime, {
-      prompt: 'Test prompt with custom settings',
+      prompt: "Test prompt with custom settings",
       maxTokens: 1000,
       temperature: 0.5,
       frequencyPenalty: 0.5,
       presencePenalty: 0.5,
     });
 
-    expect(result).toContain('Never gonna make you cry');
+    expect(result).toContain("Never gonna make you cry");
   });
 
-  it('should handle empty prompt', async () => {
+  it("should handle empty prompt", async () => {
     const handler = starterPlugin.models?.[ModelType.TEXT_SMALL];
     if (!handler) {
-      throw new Error('TEXT_SMALL model handler not found');
+      throw new Error("TEXT_SMALL model handler not found");
     }
 
-    const result = await handler(runtime, { prompt: '' });
+    const result = await handler(runtime, { prompt: "" });
 
-    expect(typeof result).toBe('string');
+    expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);
   });
 
-  it('should handle missing parameters', async () => {
+  it("should handle missing parameters", async () => {
     const handler = starterPlugin.models?.[ModelType.TEXT_LARGE];
     if (!handler) {
-      throw new Error('TEXT_LARGE model handler not found');
+      throw new Error("TEXT_LARGE model handler not found");
     }
 
-    const result = await handler(runtime, { prompt: 'Test prompt' });
+    const result = await handler(runtime, { prompt: "Test prompt" });
 
-    expect(typeof result).toBe('string');
+    expect(typeof result).toBe("string");
     expect(result.length).toBeGreaterThan(0);
   });
 });
 
-describe('API Routes', () => {
+describe("API Routes", () => {
   let runtime: IAgentRuntime;
 
   beforeEach(() => {
     runtime = createMockRuntime();
   });
 
-  it('should handle status route', async () => {
+  it("should handle status route", async () => {
     const statusRoute = starterPlugin.routes?.[0];
     if (!statusRoute?.handler) {
-      throw new Error('Status route handler not found');
+      throw new Error("Status route handler not found");
     }
 
     const mockRes = {
@@ -492,30 +533,30 @@ describe('API Routes', () => {
     await statusRoute.handler({}, mockRes, runtime);
 
     expect(mockRes._jsonData).toBeDefined();
-    expect(mockRes._jsonData.status).toBe('ok');
-    expect(mockRes._jsonData.plugin).toBe('quick-starter');
+    expect(mockRes._jsonData.status).toBe("ok");
+    expect(mockRes._jsonData.plugin).toBe("quick-starter");
     expect(mockRes._jsonData.timestamp).toBeDefined();
   });
 
-  it('should validate route configuration', () => {
+  it("should validate route configuration", () => {
     const statusRoute = starterPlugin.routes?.[0];
 
     expect(statusRoute).toBeDefined();
-    expect(statusRoute?.path).toBe('/api/status');
-    expect(statusRoute?.type).toBe('GET');
+    expect(statusRoute?.path).toBe("/api/status");
+    expect(statusRoute?.type).toBe("GET");
     // Routes don't have a public property in the current implementation
     expect(statusRoute?.handler).toBeDefined();
   });
 
-  it('should handle request with query parameters', async () => {
+  it("should handle request with query parameters", async () => {
     const statusRoute = starterPlugin.routes?.[0];
     if (!statusRoute?.handler) {
-      throw new Error('Status route handler not found');
+      throw new Error("Status route handler not found");
     }
 
     const mockReq = {
       query: {
-        verbose: 'true',
+        verbose: "true",
       },
     };
 
@@ -529,11 +570,11 @@ describe('API Routes', () => {
     await statusRoute.handler(mockReq, mockRes, runtime);
 
     expect(mockRes._jsonData).toBeDefined();
-    expect(mockRes._jsonData.status).toBe('ok');
+    expect(mockRes._jsonData.status).toBe("ok");
   });
 });
 
-describe('Event Handlers', () => {
+describe("Event Handlers", () => {
   beforeEach(() => {
     // Clear logger spy calls
     (logger.debug as any).calls = [];
@@ -541,10 +582,10 @@ describe('Event Handlers', () => {
     (logger.error as any).calls = [];
   });
 
-  it('should log when MESSAGE_RECEIVED event is triggered', async () => {
+  it("should log when MESSAGE_RECEIVED event is triggered", async () => {
     const handler = starterPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
     if (!handler) {
-      throw new Error('MESSAGE_RECEIVED event handler not found');
+      throw new Error("MESSAGE_RECEIVED event handler not found");
     }
 
     const payload = testFixtures.messagePayload();
@@ -553,10 +594,10 @@ describe('Event Handlers', () => {
     expect(logger.debug).toHaveBeenCalled();
   });
 
-  it('should handle malformed event payload', async () => {
+  it("should handle malformed event payload", async () => {
     const handler = starterPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
     if (!handler) {
-      throw new Error('MESSAGE_RECEIVED event handler not found');
+      throw new Error("MESSAGE_RECEIVED event handler not found");
     }
 
     const malformedPayload = {
@@ -569,10 +610,10 @@ describe('Event Handlers', () => {
     await handler(malformedPayload as any);
   });
 
-  it('should handle event with empty message content', async () => {
+  it("should handle event with empty message content", async () => {
     const handler = starterPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
     if (!handler) {
-      throw new Error('MESSAGE_RECEIVED event handler not found');
+      throw new Error("MESSAGE_RECEIVED event handler not found");
     }
 
     const payload = testFixtures.messagePayload({
@@ -584,7 +625,7 @@ describe('Event Handlers', () => {
   });
 });
 
-describe('StarterService', () => {
+describe("StarterService", () => {
   let runtime: IAgentRuntime;
 
   beforeEach(() => {
@@ -594,17 +635,17 @@ describe('StarterService', () => {
     (logger.error as any).calls = [];
   });
 
-  it('should start the service', async () => {
+  it("should start the service", async () => {
     const service = await StarterService.start(runtime);
     expect(service).toBeInstanceOf(StarterService);
     expect(logger.info).toHaveBeenCalled();
   });
 
-  it('should have correct service type', () => {
-    expect(StarterService.serviceType).toBe('starter');
+  it("should have correct service type", () => {
+    expect(StarterService.serviceType).toBe("starter");
   });
 
-  it('should stop service correctly', async () => {
+  it("should stop service correctly", async () => {
     // Start service
     const service = await StarterService.start(runtime);
 
@@ -618,15 +659,17 @@ describe('StarterService', () => {
     expect(logger.info).toHaveBeenCalled();
   });
 
-  it('should throw error when stopping non-existent service', async () => {
+  it("should throw error when stopping non-existent service", async () => {
     const emptyRuntime = createMockRuntime({
       getService: () => null,
     });
 
-    await expect(StarterService.stop(emptyRuntime)).rejects.toThrow('Starter service not found');
+    await expect(StarterService.stop(emptyRuntime)).rejects.toThrow(
+      "Starter service not found",
+    );
   });
 
-  it('should handle multiple start/stop cycles', async () => {
+  it("should handle multiple start/stop cycles", async () => {
     // First cycle
     const service1 = await StarterService.start(runtime);
     expect(service1).toBeInstanceOf(StarterService);
@@ -646,10 +689,10 @@ describe('StarterService', () => {
     await StarterService.stop(runtimeWithService2);
   });
 
-  it('should provide capability description', async () => {
+  it("should provide capability description", async () => {
     const service = await StarterService.start(runtime);
     expect(service.capabilityDescription).toBe(
-      'This is a starter service which is attached to the agent through the starter plugin.'
+      "This is a starter service which is attached to the agent through the starter plugin.",
     );
   });
 });

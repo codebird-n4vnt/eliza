@@ -1,11 +1,11 @@
-import type { KaminoObligation } from '@kamino-finance/klend-sdk';
+import type { KaminoObligation } from "@kamino-finance/klend-sdk";
 
 // ─── Market Registry ────────────────────────────────────────────────────────
 
 export interface MarketConfig {
-  name: string;              // e.g. "Main", "JLP", "SOL-Only"
-  address: string;           // market pubkey
-  description?: string;      // for LLM context
+  name: string; // e.g. "Main", "JLP", "SOL-Only"
+  address: string; // market pubkey
+  description?: string; // for LLM context
 }
 
 export interface KaminoPluginSettings {
@@ -26,7 +26,7 @@ export interface KaminoPluginSettings {
 export interface ReserveInfo {
   symbol: string;
   mint: string;
-  marketName: string;        // which market this reserve belongs to
+  marketName: string; // which market this reserve belongs to
   supplyAPY: string;
   borrowAPY: string;
   totalDeposits: string;
@@ -68,7 +68,7 @@ export interface PositionBorrow {
 export interface DepositParams {
   token: string;
   amount: string;
-  marketName?: string;       // defaults to first market or "Main"
+  marketName?: string; // defaults to first market or "Main"
 }
 
 export interface BorrowParams {
@@ -79,19 +79,19 @@ export interface BorrowParams {
 
 export interface RepayParams {
   token: string;
-  amount: string | 'max';
+  amount: string | "max";
   marketName?: string;
 }
 
 export interface WithdrawParams {
   token: string;
-  amount: string | 'max';
+  amount: string | "max";
   marketName?: string;
 }
 
-export interface CachedObligation{
-    obligation: KaminoObligation;
-    fetchedAt: number;
+export interface CachedObligation {
+  obligation: KaminoObligation;
+  fetchedAt: number;
 }
 
 // ─── Health Check ───────────────────────────────────────────────────────────
@@ -99,7 +99,6 @@ export interface CachedObligation{
 export interface HealthCheckResult {
   positions: PositionInfo[];
   hasPositions: boolean;
-  overallRisk: 'safe' | 'caution' | 'danger' | 'critical';
+  overallRisk: "safe" | "caution" | "danger" | "critical";
   worstHealthFactor: string;
 }
-

@@ -1,17 +1,17 @@
 import {
-    composePromptFromState,
-    IAgentRuntime,
-    JSONSchema,
-    Memory,
-    ModelType,
-    State,
-} from '@elizaos/core';
+  composePromptFromState,
+  IAgentRuntime,
+  JSONSchema,
+  Memory,
+  ModelType,
+  State,
+} from "@elizaos/core";
 import type {
-    DepositParams,
-    BorrowParams,
-    RepayParams,
-    WithdrawParams,
-} from '../types/index';
+  DepositParams,
+  BorrowParams,
+  RepayParams,
+  WithdrawParams,
+} from "../types/index";
 
 // ─── LendParams (mirror of DepositParams, kept separate for clarity) ──────────
 
@@ -21,53 +21,51 @@ export type LendParams = DepositParams;
 // All parsers go through this — avoids repeating composePromptFromState boilerplate.
 
 async function runObjectModel(
-    runtime: IAgentRuntime,
-    message: Memory,
-    state: State | undefined,
-    template: string,
-    schema: JSONSchema,
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  template: string,
+  schema: JSONSchema,
 ): Promise<Record<string, unknown> | null> {
-    try {
-        const currentState = state ?? (await runtime.composeState(message));
+  try {
+    const currentState = state ?? (await runtime.composeState(message));
 
-        const prompt = composePromptFromState({
-            state: currentState,
-            template,
-        });
+    const prompt = composePromptFromState({
+      state: currentState,
+      template,
+    });
 
-        const result = await runtime.useModel(ModelType.OBJECT_SMALL, {
-            prompt,
-            schema,
-        }) as Record<string, unknown>;
-
-        if (!result?.token || !result?.amount) return null;
-        return result;
-    } catch {
-        return null;
-    }
+    const result = (await runtime.useModel(ModelType.OBJECT_SMALL, {
+      prompt,
+      schema,
+    })) as Record<string, unknown>;
+    return result ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── Base schema (token + amount + marketName) ────────────────────────────────
 
 const BASE_SCHEMA = {
-    type: 'object',
-    properties: {
-        token:      { type: 'string' },
-        amount:     { type: 'string' },        // kept as string — Decimal() in action
-        marketName: { type: 'string' },
-    },
-    required: ['token', 'amount'],
+  type: "object",
+  properties: {
+    token: { type: "string" },
+    amount: { type: "string" }, // kept as string — Decimal() in action
+    marketName: { type: "string" },
+  },
+  required: ["token", "amount"],
 };
 
 // Same but amount also accepts the literal "max"
 const MAX_SCHEMA = {
-    type: 'object',
-    properties: {
-        token:      { type: 'string' },
-        amount:     { type: 'string' },        // "max" or a numeric string
-        marketName: { type: 'string' },
-    },
-    required: ['token', 'amount'],
+  type: "object",
+  properties: {
+    token: { type: "string" },
+    amount: { type: "string" }, // "max" or a numeric string
+    marketName: { type: "string" },
+  },
+  required: ["token", "amount"],
 };
 
 // ─── parseLendMessage ─────────────────────────────────────────────────────────
@@ -90,20 +88,24 @@ Return JSON with:
 `.trim();
 
 export async function parseLendMessage(
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
 ): Promise<LendParams | null> {
-    const result = await runObjectModel(
-        runtime, message, state, LEND_TEMPLATE, BASE_SCHEMA
-    );
-    if (!result) return null;
+  const result = await runObjectModel(
+    runtime,
+    message,
+    state,
+    LEND_TEMPLATE,
+    BASE_SCHEMA,
+  );
+  if (!result) return null;
 
-    return {
-        token:      String(result.token).toUpperCase(),
-        amount:     String(result.amount),
-        marketName: String(result.marketName ?? 'main'),
-    };
+  return {
+    token: String(result.token).toUpperCase(),
+    amount: String(result.amount),
+    marketName: String(result.marketName ?? "main"),
+  };
 }
 
 // ─── parseLendWithdrawMessage ─────────────────────────────────────────────────
@@ -127,20 +129,24 @@ Return JSON with:
 `.trim();
 
 export async function parseLendWithdrawMessage(
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
 ): Promise<WithdrawParams | null> {
-    const result = await runObjectModel(
-        runtime, message, state, LEND_WITHDRAW_TEMPLATE, MAX_SCHEMA
-    );
-    if (!result) return null;
+  const result = await runObjectModel(
+    runtime,
+    message,
+    state,
+    LEND_WITHDRAW_TEMPLATE,
+    MAX_SCHEMA,
+  );
+  if (!result) return null;
 
-    return {
-        token:      String(result.token).toUpperCase(),
-        amount:     String(result.amount),       // may be "max"
-        marketName: String(result.marketName ?? 'main'),
-    };
+  return {
+    token: String(result.token).toUpperCase(),
+    amount: String(result.amount), // may be "max"
+    marketName: String(result.marketName ?? "main"),
+  };
 }
 
 // ─── parseDepositMessage ──────────────────────────────────────────────────────
@@ -163,20 +169,24 @@ Return JSON with:
 `.trim();
 
 export async function parseDepositMessage(
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
 ): Promise<DepositParams | null> {
-    const result = await runObjectModel(
-        runtime, message, state, DEPOSIT_TEMPLATE, BASE_SCHEMA
-    );
-    if (!result) return null;
+  const result = await runObjectModel(
+    runtime,
+    message,
+    state,
+    DEPOSIT_TEMPLATE,
+    BASE_SCHEMA,
+  );
+  if (!result) return null;
 
-    return {
-        token:      String(result.token).toUpperCase(),
-        amount:     String(result.amount),
-        marketName: String(result.marketName ?? 'main'),
-    };
+  return {
+    token: String(result.token).toUpperCase(),
+    amount: String(result.amount),
+    marketName: String(result.marketName ?? "main"),
+  };
 }
 
 // ─── parseBorrowMessage ───────────────────────────────────────────────────────
@@ -199,20 +209,24 @@ Return JSON with:
 `.trim();
 
 export async function parseBorrowMessage(
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
 ): Promise<BorrowParams | null> {
-    const result = await runObjectModel(
-        runtime, message, state, BORROW_TEMPLATE, BASE_SCHEMA
-    );
-    if (!result) return null;
+  const result = await runObjectModel(
+    runtime,
+    message,
+    state,
+    BORROW_TEMPLATE,
+    BASE_SCHEMA,
+  );
+  if (!result) return null;
 
-    return {
-        token:      String(result.token).toUpperCase(),
-        amount:     String(result.amount),
-        marketName: String(result.marketName ?? 'main'),
-    };
+  return {
+    token: String(result.token).toUpperCase(),
+    amount: String(result.amount),
+    marketName: String(result.marketName ?? "main"),
+  };
 }
 
 // ─── parseRepayMessage ────────────────────────────────────────────────────────
@@ -236,20 +250,24 @@ Return JSON with:
 `.trim();
 
 export async function parseRepayMessage(
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
 ): Promise<RepayParams | null> {
-    const result = await runObjectModel(
-        runtime, message, state, REPAY_TEMPLATE, MAX_SCHEMA
-    );
-    if (!result) return null;
+  const result = await runObjectModel(
+    runtime,
+    message,
+    state,
+    REPAY_TEMPLATE,
+    MAX_SCHEMA,
+  );
+  if (!result) return null;
 
-    return {
-        token:      String(result.token).toUpperCase(),
-        amount:     String(result.amount),
-        marketName: String(result.marketName ?? 'main'),
-    };
+  return {
+    token: String(result.token).toUpperCase(),
+    amount: String(result.amount),
+    marketName: String(result.marketName ?? "main"),
+  };
 }
 
 // ─── parseWithdrawMessage ─────────────────────────────────────────────────────
@@ -273,18 +291,22 @@ Return JSON with:
 `.trim();
 
 export async function parseWithdrawMessage(
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
 ): Promise<WithdrawParams | null> {
-    const result = await runObjectModel(
-        runtime, message, state, WITHDRAW_TEMPLATE, MAX_SCHEMA
-    );
-    if (!result) return null;
+  const result = await runObjectModel(
+    runtime,
+    message,
+    state,
+    WITHDRAW_TEMPLATE,
+    MAX_SCHEMA,
+  );
+  if (!result) return null;
 
-    return {
-        token:      String(result.token).toUpperCase(),
-        amount:     String(result.amount),
-        marketName: String(result.marketName ?? 'main'),
-    };
+  return {
+    token: String(result.token).toUpperCase(),
+    amount: String(result.amount),
+    marketName: String(result.marketName ?? "main"),
+  };
 }
