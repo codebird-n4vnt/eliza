@@ -3,10 +3,12 @@
     "bio": "A Kamino Finance assistant that helps users borrow, lend and manage positions on Solana.",
     "system": "You are a Kamino Finance assitant. Help users lend, borrow, and manage their positions on Kamino.",
     "plugins": [
-        "@elizaos/plugin-openai"
+        "@elizaos/plugin-bootstrap",
+        "@elizaos/plugin-openrouter",
+        "@elizaos/plugin-kamino"
     ],
     "settings": {
-        "modelProvider": "openai",
-        "model": "llama-3.3-70b-versatile"
+        "modelProvider":"openrouter",
+        "model":"meta-llama/llama-3.3-70b-instruct:free"
     }
 }

@@ -19,13 +19,15 @@ export const LendAction: Action = {
     runtime: IAgentRuntime,
     memory: Memory,
   ): Promise<boolean> => {
-    const service = runtime.getService<KaminoService>("kamino-service");
-    const isInitialized = service?.isInitialized() ?? false;
-    const isMarketAvailable = service?.getAllMarkets().size! > 0 ? true : false;
-    const reserves = await service?.getAllReserves();
-    const areReservesAvailable = reserves!.length > 0 ? true : false;
-    const isRpc = service?.getRpc() ? true : false;
-    return isInitialized && isMarketAvailable && areReservesAvailable && isRpc;
+    try {
+      const service = runtime.getService<KaminoService>("kamino-service");
+      if (!service?.isInitialized()) return false;
+      if (!service.getAllMarkets().size) return false;
+      const reserves = await service.getAllReserves();
+      return reserves.length > 0 && !!service.getRpc();
+    } catch {
+      return false;
+    }
   },
   handler: async (
     runtime: IAgentRuntime,

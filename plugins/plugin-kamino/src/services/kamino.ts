@@ -9,7 +9,6 @@ import type {
 } from "../types/index";
 import {
   KaminoMarket,
-  PROGRAM_ID as KLEND_PROGRAM_ID,
   type KaminoReserve,
   KaminoObligation,
   VanillaObligation,
@@ -35,7 +34,6 @@ import {
   createTransactionMessage,
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
-  appendTransactionMessageInstruction,
   appendTransactionMessageInstructions,
   pipe,
   signTransactionMessageWithSigners,
@@ -57,17 +55,24 @@ const DEFAULT_MARKETS: MarketConfig[] = [
 const DEFAULT_REFRESH_MS = 30000;
 
 export class KaminoService extends Service {
-  // runtime: IAgentRuntime;
+  /**
+   * Required by elizaOS: the key used by runtime.getService("kamino-service")
+   * and also the key under which the service is stored in the services map.
+   */
+  static serviceType = "kamino-service";
+
   private rpc!: Rpc<SolanaRpcApi>;
   private rpcSubscriptions: any;
-  // private currentSlot!: bigint;
   private signer: KeyPairSigner<string> | null = null;
   private markets: Map<string, KaminoMarket> = new Map();
   private refreshTimer: NodeJS.Timeout | null = null;
   private isReady = false;
-
   private obligationCache: Map<string, CachedObligation> = new Map();
   private readonly OBLIGATION_CACHE_TTL_MS = 10000;
+
+  private reservesCache: ReserveInfo[] = [];
+  private reservesCacheUpdatedAt = 0;
+  private readonly RESERVES_CACHE_TTL_MS = 30000;
 
   override capabilityDescription =
     "Provides access to Kamino Protocol — lending, borrowing, liquidity vaults, farms, and limit orders on Solana.";
@@ -76,8 +81,20 @@ export class KaminoService extends Service {
     super(runtime);
   }
 
+  /**
+   * Required by elizaOS: the runtime calls `ServiceClass.start(runtime)` to
+   * create and initialize the service. Must return the service instance.
+   */
+  static async start(runtime: IAgentRuntime): Promise<KaminoService> {
+    const service = new KaminoService(runtime);
+    await service.initialize();
+    return service;
+  }
+
   override async stop(): Promise<void> {
-    logger.info("Starter service stopped");
+    this.stopRefreshTimer();
+    this.isReady = false;
+    logger.info("[KaminoService] Service stopped");
   }
 
   async initialize(): Promise<void> {
@@ -131,6 +148,8 @@ export class KaminoService extends Service {
       throw new Error("KaminoService: No markets could be loaded");
     }
 
+    await this.refreshReservesCache();
+
     this.startRefreshTimer(settings.refreshIntervalMs);
     this.isReady = true;
     console.log(
@@ -145,21 +164,41 @@ export class KaminoService extends Service {
         string
       >) || {};
 
+    // Helper: getSetting() returns null when not set; String(null) === "null"
+    // which is truthy, making all fallbacks unreachable. Strip those out.
+    const getSafe = (key: string): string | undefined => {
+      const raw = this.runtime.getSetting(key);
+      if (raw === null || raw === undefined) return undefined;
+      const str = String(raw).trim();
+      if (str === "null" || str === "undefined" || str === "") return undefined;
+      // Detect dotenvx-encrypted values (AQ. prefix) — the dotenvx CLI
+      // decrypts these before the process sees them, so if we still see the
+      // cipher text it means the DOTENV_PRIVATE_KEY is missing/wrong.
+      if (str.startsWith("AQ.")) {
+        logger.warn(
+          `[KaminoService] ${key} appears to be a dotenvx-encrypted value that was not decrypted. ` +
+          `Ensure DOTENV_PRIVATE_KEY is set, or replace the value with a plain-text secret.`
+        );
+        return undefined;
+      }
+      return str;
+    };
+
     const rpcUrl =
-      String(this.runtime.getSetting("KAMINO_RPC_URL")) ||
-      secrets.KAMINO_RPC_URL ||
+      getSafe("SOLANA_RPC_URL") ??
+      secrets.SOLANA_RPC_URL ??
       "https://api.mainnet-beta.solana.com";
 
     const privateKey =
-      String(this.runtime.getSetting("KAMINO_PRIVATE_KEY")) ||
-      secrets.KAMINO_PRIVATE_KEY;
+      getSafe("SOLANA_PRIVATE_KEY") ??
+      secrets.SOLANA_PRIVATE_KEY;
 
     const keypairPath =
-      String(this.runtime.getSetting("KAMINO_KEYPAIR_PATH")) ||
-      secrets.KAMINO_KEYPAIR_PATH;
+      getSafe("SOLANA_KEYPAIR_PATH") ??
+      secrets.SOLANA_KEYPAIR_PATH;
 
     const refreshIntervalMs = parseInt(
-      (this.runtime.getSetting("KAMINO_REFRESH_MS") as string) ||
+      getSafe("KAMINO_REFRESH_MS") ||
         secrets.KAMINO_REFRESH_MS ||
         String(DEFAULT_REFRESH_MS),
       10,
@@ -167,7 +206,7 @@ export class KaminoService extends Service {
 
     let markets: MarketConfig[] = [];
     const marketsJson =
-      this.runtime.getSetting("KAMINO_MARKETS") || secrets.KAMINO_MARKETS;
+      getSafe("KAMINO_MARKETS") || secrets.KAMINO_MARKETS;
 
     if (marketsJson) {
       try {
@@ -181,6 +220,7 @@ export class KaminoService extends Service {
 
     return { rpcUrl, markets, privateKey, keypairPath, refreshIntervalMs };
   }
+
 
   private async loadSigner(
     settings: KaminoPluginSettings,
@@ -230,7 +270,16 @@ export class KaminoService extends Service {
           );
         }
       }
+      try {
+        await this.refreshReservesCache();
+      } catch (error) {
+        console.error(`[KaminoService] Reserves cache refresh failed: ${error}`);
+      }
     }, intervalMs);
+  }
+  private async refreshReservesCache(): Promise<void>{
+    this.reservesCache = await this.computeAllReserves();
+    this.reservesCacheUpdatedAt = Date.now();
   }
   stopRefreshTimer(): void {
     if (this.refreshTimer) {
@@ -308,8 +357,14 @@ export class KaminoService extends Service {
       amountBN: amountBn,
     };
   }
-
-  async getAllReserves(): Promise<ReserveInfo[]> {
+  async getAllReserves(forceRefresh = false): Promise<ReserveInfo[]>{
+    const isStale = Date.now() - this.reservesCacheUpdatedAt > this.RESERVES_CACHE_TTL_MS;
+    if(forceRefresh || this.reservesCacheUpdatedAt === 0 || isStale ){
+      await this.refreshReservesCache();
+    }
+    return this.reservesCache;
+  }
+  async computeAllReserves(): Promise<ReserveInfo[]> {
     const results: ReserveInfo[] = [];
     let currentSlot: bigint;
     try {
@@ -361,6 +416,38 @@ export class KaminoService extends Service {
     return results;
   }
 
+  // private buildMarketCache(): MarketCache {
+  //   const reserves = await this.getAllReserves();
+
+  //   const reserveMap = new Map(
+  //       reserves.map(r => [r.symbol, r])
+  //   );
+
+  //   const topSupply = [...reserves]
+  //       .sort(
+  //           (a, b) =>
+  //               parseFloat(b.supplyAPY) -
+  //               parseFloat(a.supplyAPY)
+  //       )
+  //       .slice(0, 5);
+
+  //   const topBorrow = [...reserves]
+  //       .sort(
+  //           (a, b) =>
+  //               parseFloat(a.borrowAPY) -
+  //               parseFloat(b.borrowAPY)
+  //       )
+  //       .slice(0, 5);
+
+  //   return {
+  //       reserves,
+  //       reserveMap,
+  //       topSupply,
+  //       topBorrow,
+  //       lastUpdated: Date.now(),
+  //   };
+  // }
+
   getReservesBySymbol(
     symbol: string,
     marketName?: string,
@@ -394,7 +481,7 @@ export class KaminoService extends Service {
 
     try {
       let obligation: KaminoObligation | null;
-      if ((obligationTypeTag = ObligationTypeTag.Vanilla)) {
+      if ((obligationTypeTag === ObligationTypeTag.Vanilla)) {
         obligation = await market.getUserVanillaObligation(
           this.getWalletAddress(),
         );
@@ -452,6 +539,15 @@ export class KaminoService extends Service {
 
     return results;
   }
+
+  // async refreshCache(){
+  //   const reserves = await this.getAllReserves();
+  //   await this.re
+  //   this.cache = {
+  //     reserves,
+  //     topSupply: this.(reserves).
+  //   }
+  // }
 
   async getHealthCheck(forceRefresh = false): Promise<HealthCheckResult> {
     const obligations = await this.getAllUserObligations(forceRefresh);

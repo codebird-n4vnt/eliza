@@ -419,6 +419,8 @@
   "trustedDependencies": [
     "@biomejs/biome",
     "@discordjs/opus",
+    "@elizaos/plugin-computeruse",
+    "@elizaos/plugin-kamino",
     "@elizaos/plugin-starter",
     "@nestjs/core",
     "@openapitools/openapi-generator-cli",

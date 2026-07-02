@@ -6,7 +6,7 @@ import {
   State,
 } from "@elizaos/core";
 import { KaminoService } from "../services/kamino";
-import { symbol } from "zod";
+
 
 export const marketProvider: Provider = {
   name: "KAMINO_MARKET",

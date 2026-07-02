@@ -44,10 +44,10 @@
     "package.json"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-google-genai": "^1.1.0",
-    "@elizaos/plugin-groq": "^1.0.4",
+    "@elizaos/core": "^1.7.2",
+    "@elizaos/plugin-bootstrap": "^1.7.2",
     "@elizaos/plugin-openai": "^1.6.0",
+    "@elizaos/plugin-openrouter": "^1.5.17",
     "@kamino-finance/farms-sdk": "^3.2.26",
     "@kamino-finance/klend-sdk": "^9.0.1",
     "@kamino-finance/kliquidity-sdk": "^13.0.0",
