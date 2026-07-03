@@ -11,6 +11,8 @@ export interface MarketConfig {
 export interface KaminoPluginSettings {
   /** RPC endpoint */
   rpcUrl: string;
+  /** WebSocket endpoint for tx confirmations (auto-derived from rpcUrl if omitted) */
+  wsUrl: string;
   /** Markets to load (defaults to Main market if empty) */
   markets: MarketConfig[];
   /** Private key as base58 string */

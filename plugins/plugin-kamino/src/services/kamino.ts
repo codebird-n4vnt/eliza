@@ -101,9 +101,8 @@ export class KaminoService extends Service {
     const settings = this.getSettings();
 
     this.rpc = createSolanaRpc(settings.rpcUrl);
-    this.rpcSubscriptions = createSolanaRpcSubscriptions(
-      settings.rpcUrl.replace("https://", "wss://").replace("http://", "ws://"),
-    );
+    this.rpcSubscriptions = createSolanaRpcSubscriptions(settings.wsUrl);
+    logger.info(`[KaminoService] RPC: ${settings.rpcUrl}  WS: ${settings.wsUrl}`);
 
     this.signer = await this.loadSigner(settings);
     // this.currentSlot = await this.rpc.getSlot().send();
@@ -189,6 +188,14 @@ export class KaminoService extends Service {
       secrets.SOLANA_RPC_URL ??
       "https://api.mainnet-beta.solana.com";
 
+    // SOLANA_WS_URL can be set explicitly (recommended for local validators
+    // like Surfpool which run WS on a different port than RPC). If not set,
+    // the scheme is derived from the RPC URL (https→wss, http→ws).
+    const wsUrl =
+      getSafe("SOLANA_WS_URL") ??
+      secrets.SOLANA_WS_URL ??
+      rpcUrl.replace("https://", "wss://").replace("http://", "ws://");
+
     const privateKey =
       getSafe("SOLANA_PRIVATE_KEY") ??
       secrets.SOLANA_PRIVATE_KEY;
@@ -218,7 +225,7 @@ export class KaminoService extends Service {
       }
     }
 
-    return { rpcUrl, markets, privateKey, keypairPath, refreshIntervalMs };
+    return { rpcUrl, wsUrl, markets, privateKey, keypairPath, refreshIntervalMs };
   }
 
 
@@ -654,6 +661,38 @@ export class KaminoService extends Service {
     };
   }
 
+  /**
+   * HTTP-polling fallback for transaction confirmation.
+   * Used when the WebSocket subscription fails (e.g. port mismatch with
+   * Surfpool which uses rpcPort+1 for WS). Polls up to `maxAttempts` times
+   * with `intervalMs` between checks.
+   */
+  private async pollForConfirmation(
+    signature: string,
+    maxAttempts = 30,
+    intervalMs = 1000,
+  ): Promise<boolean> {
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const result = await this.rpc
+          .getSignatureStatuses([signature as any])
+          .send();
+        const status = result.value[0];
+        if (
+          status &&
+          (status.confirmationStatus === "confirmed" ||
+            status.confirmationStatus === "finalized")
+        ) {
+          return true;
+        }
+      } catch {
+        // continue polling
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+    return false;
+  }
+
   async sendActionTransaction(
     action: {
       setupIxs?: any[];
@@ -732,10 +771,24 @@ export class KaminoService extends Service {
       assertIsTransactionWithinSizeLimit(signedTransaction);
       const signature = getSignatureFromTransaction(signedTransaction);
 
-      await sendAndConfirmTransactionFactory({
-        rpc: this.rpc,
-        rpcSubscriptions: this.rpcSubscriptions,
-      })(signedTransaction, { commitment, skipPreflight: skipPreFlight });
+      try {
+        await sendAndConfirmTransactionFactory({
+          rpc: this.rpc,
+          rpcSubscriptions: this.rpcSubscriptions,
+        })(signedTransaction, { commitment, skipPreflight: skipPreFlight });
+      } catch (wsError: any) {
+        // WebSocket subscription can fail when the WS port doesn't match
+        // (e.g., Surfpool uses rpcPort+1). Fall back to HTTP polling so a
+        // confirmed transaction still shows "Completed" in the UI.
+        console.warn(
+          `[KaminoService] WS confirmation failed (${wsError?.message ?? wsError}), polling via HTTP...`,
+        );
+        const confirmed = await this.pollForConfirmation(String(signature));
+        if (!confirmed) {
+          throw wsError; // Only re-throw if the tx truly didn't land.
+        }
+        console.log(`[KaminoService] Confirmed via HTTP polling: ${signature}`);
+      }
 
       return signature;
     };
