@@ -1,256 +1,188 @@
-# Plugin Quick Starter
+# @elizaos/plugin-kamino
 
-A minimal backend-only plugin template for ElizaOS. This template provides a clean starting point for creating simple plugins without frontend complexity.
+> Kamino Finance integration for [elizaOS](https://elizaos.ai) — lend, borrow, repay, and manage DeFi positions on Solana through natural language.
 
 ## Overview
 
-This quick-starter template is ideal for:
+`plugin-kamino` connects your elizaOS agent to [Kamino Finance](https://kamino.finance), the leading Solana lending and liquidity protocol. Once installed, your agent can execute on-chain lending operations, report live market rates, and monitor collateral health — all from a conversation.
 
-- Backend-only plugins
-- Simple API integrations
-- Services and providers
-- Actions without UI components
-- Lightweight extensions
+## Features
 
-## Structure
+| Feature | What it does |
+|---------|-------------|
+| **Lend / Supply** | Supply tokens to Kamino to earn yield |
+| **Lend Withdraw** | Redeem supplied tokens back to your wallet |
+| **Deposit Collateral** | Deposit tokens as collateral to enable borrowing |
+| **Withdraw Collateral** | Withdraw deposited collateral from an obligation |
+| **Borrow** | Borrow tokens against deposited collateral |
+| **Repay** | Repay outstanding loans (supports "repay max") |
+| **Market Rates** | Live APY, liquidity, and LTV data injected into every response |
+| **Position Health** | Check health factor, LTV, borrow limit, and liquidation risk |
 
-```
-plugin-kamino/
-├── src/
-│   ├── __tests__/          # Test directory
-│   │   ├── e2e/            # E2E tests
-│   │   │   ├── plugin-kamino.e2e.ts
-│   │   │   └── README.md
-│   │   ├── plugin.test.ts  # Component tests
-│   │   └── test-utils.ts   # Test utilities
-│   ├── plugin.ts           # Main plugin implementation (exports tests)
-│   └── index.ts            # Plugin export
-├── scripts/
-│   └── install-test-deps.js # Test dependency installer
-├── tsup.config.ts          # Build configuration
-├── tsconfig.json           # TypeScript config
-├── package.json            # Minimal dependencies
-└── README.md               # This file
+## Installation
+
+```bash
+# npm
+npm install @elizaos/plugin-kamino
+
+# bun
+bun add @elizaos/plugin-kamino
 ```
 
-## Getting Started
+## Configuration
 
-1. **Create your plugin:**
+### Environment Variables
 
-   ```bash
-   elizaos create my-plugin
-   # Select: Plugin
-   # Select: Quick Plugin (Backend Only)
-   ```
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SOLANA_RPC_URL` | ✅ | Solana RPC endpoint (mainnet recommended: Helius, QuickNode, Triton) |
+| `SOLANA_PRIVATE_KEY` | ✅ | Base58-encoded private key of the wallet the agent will sign with |
+| `SOLANA_WS_URL` | ⬜ | WebSocket endpoint for tx confirmations. Auto-derived from `SOLANA_RPC_URL` if not set. Set explicitly for local validators (e.g. `ws://127.0.0.1:8900`) |
+| `SOLANA_KEYPAIR_PATH` | ⬜ | Path to a Solana keypair JSON file (alternative to `SOLANA_PRIVATE_KEY`) |
+| `KAMINO_MARKETS` | ⬜ | JSON array of custom markets to load. Defaults to Kamino's Main market |
+| `KAMINO_REFRESH_MS` | ⬜ | Reserve data refresh interval in milliseconds (default: `30000`) |
 
-2. **Navigate to your plugin:**
+Copy `.env.example` and fill in your values:
 
-   ```bash
-   cd my-plugin
-   ```
-
-3. **Install dependencies:**
-
-   ```bash
-   bun install
-   ```
-
-4. **Start development:**
-   ```bash
-   bun run dev
-   ```
-
-## Key Features
-
-### Minimal Dependencies
-
-- Only essential packages (`@elizaos/core`, `zod`)
-- No frontend frameworks or build tools
-- Fast installation and builds
-
-### Comprehensive Testing
-
-- Component tests with Bun test runner for unit testing
-- E2E tests with ElizaOS test runner for integration testing
-- Quick test execution with focused test suites
-
-### Backend Focus
-
-- API routes for server-side functionality
-- Services for state management
-- Actions for agent capabilities
-- Providers for contextual data
-
-## Plugin Components
-
-### Actions
-
-Define agent capabilities:
-
-```typescript
-const myAction: Action = {
-  name: 'MY_ACTION',
-  description: 'Description of what this action does',
-  validate: async (runtime, message, state) => {
-    // Validation logic
-    return true;
-  },
-  handler: async (runtime, message, state, options, callback) => {
-    // Action implementation
-    return { success: true, data: {} };
-  },
-};
+```bash
+cp .env.example .env
 ```
 
-### Services
+### Character File
 
-Manage plugin state:
+Add the plugin to your agent's character JSON. `@elizaos/plugin-bootstrap` is required for the action system to work:
 
-```typescript
-export class MyService extends Service {
-  static serviceType = 'my-service';
-
-  async start() {
-    // Initialize service
-  }
-
-  async stop() {
-    // Cleanup
+```json
+{
+  "name": "MyAgent",
+  "plugins": [
+    "@elizaos/plugin-bootstrap",
+    "@elizaos/plugin-openrouter",
+    "@elizaos/plugin-kamino"
+  ],
+  "settings": {
+    "modelProvider": "openrouter",
+    "model": "google/gemini-2.5-flash"
   }
 }
 ```
 
-### Providers
+> Any elizaOS-compatible model provider works (OpenAI, Anthropic, Google, Groq, etc.). Replace `@elizaos/plugin-openrouter` with your preferred provider plugin.
 
-Supply contextual information:
+## Actions
 
-```typescript
-const myProvider: Provider = {
-  name: 'MY_PROVIDER',
-  description: 'Provides contextual data',
-  get: async (runtime, message, state) => {
-    return {
-      text: 'Provider data',
-      values: {},
-      data: {},
-    };
-  },
-};
+### `KAMINO_LEND`
+Supply tokens to Kamino's lending market to earn yield.
+
+**Trigger phrases:**
+- `"Lend 100 USDC"`
+- `"Supply 5 SOL for yield"`
+- `"Earn yield on my USDT"`
+
+---
+
+### `KAMINO_LEND_WITHDRAW`
+Redeem previously supplied (lent) tokens back to your wallet.
+
+**Trigger phrases:**
+- `"Withdraw 50 USDC from lending"`
+- `"Redeem all my SOL supply"`
+- `"Take back my supplied USDT"`
+
+---
+
+### `KAMINO_DEPOSIT`
+Deposit tokens as collateral into a Kamino obligation. Required before borrowing.
+
+**Trigger phrases:**
+- `"Deposit 1 SOL as collateral"`
+- `"Put 100 USDC as collateral on Kamino"`
+
+---
+
+### `KAMINO_WITHDRAW`
+Withdraw deposited collateral from an obligation.
+
+**Trigger phrases:**
+- `"Withdraw my SOL collateral"`
+- `"Remove 50 USDC collateral"`
+- `"Take out all my collateral"`
+
+---
+
+### `KAMINO_BORROW`
+Borrow tokens against deposited collateral.
+
+**Trigger phrases:**
+- `"Borrow 200 USDC"`
+- `"Take a loan of 0.5 SOL"`
+- `"Get a loan from Kamino"`
+
+---
+
+### `KAMINO_REPAY`
+Repay outstanding borrowed tokens. Supports full repayment.
+
+**Trigger phrases:**
+- `"Repay 100 USDC"`
+- `"Payback 0.5 SOL"`
+- `"Repay max USDT"` / `"Repay all my USDC debt"`
+
+---
+
+### `KAMINO_RESERVES`
+List all available reserves with live supply APY, borrow APY, available liquidity, and LTV.
+
+**Trigger phrases:**
+- `"Show me available reserves"`
+- `"What can I borrow on Kamino?"`
+- `"List Kamino markets"`
+
+---
+
+### `KAMINO_HEALTH`
+Check your current position health — health factor, LTV, borrow limit, and liquidation risk across all obligations.
+
+**Trigger phrases:**
+- `"How is my position?"`
+- `"Am I at risk of liquidation?"`
+- `"Show me my loans"`
+- `"What's my health factor?"`
+
+## Market Data Provider
+
+The plugin injects live Kamino market data into every LLM context automatically via the `KAMINO_MARKET` provider. This means the agent can answer market questions (`"What's the best yield on Solana right now?"`) without explicitly triggering an action.
+
+## Custom Markets
+
+By default, the plugin loads Kamino's **Main market** (`7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF`). You can override this with `KAMINO_MARKETS`:
+
+```env
+KAMINO_MARKETS=[{"name":"main","address":"7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF"},{"name":"jlp","address":"DxXdAyU3kCjnyggvHmY5nAwg5cRbbmdyX3npfDMjjMek"}]
 ```
 
-### API Routes
+## REST API
 
-Backend endpoints:
-
-```typescript
-routes: [
-  {
-    name: 'api-endpoint',
-    path: '/api/endpoint',
-    type: 'GET',
-    handler: async (req, res) => {
-      res.json({ data: 'response' });
-    },
-  },
-];
-```
-
-## Development Commands
-
-```bash
-# Start in development mode with hot reload
-bun run dev
-
-# Start in production mode
-bun run start
-
-# Build the plugin
-bun run build
-
-# Run tests
-bun test
-
-# Format code
-bun run format
-```
-
-## Testing
-
-ElizaOS employs a dual testing strategy:
-
-1. **Component Tests** (`src/__tests__/*.test.ts`)
-
-   - Run with Bun's native test runner
-   - Fast, isolated tests using mocks
-   - Perfect for TDD and component logic
-
-2. **E2E Tests** (`src/__tests__/e2e/*.e2e.ts`)
-   - Run with ElizaOS custom test runner
-   - Real runtime with actual database (PGLite)
-   - Test complete user scenarios
-
-### Test Structure
+The plugin exposes a health-check endpoint:
 
 ```
-src/
-  __tests__/              # All tests live inside src
-    *.test.ts            # Component tests (use Bun test runner)
-    e2e/                 # E2E tests (use ElizaOS test runner)
-      plugin-kamino.e2e.ts  # E2E test suite
-      README.md          # E2E testing documentation
-  plugin.ts              # Export tests here: tests: [QuickStarterPluginTestSuite]
+GET /api/status
+→ { "status": "ok", "plugin": "plugin-kamino", "timestamp": "..." }
 ```
 
-### Running Tests
+## Security
 
-```bash
-# Run all tests (component + e2e)
-elizaos test
+- The agent's private key has full signing authority. Use a **dedicated wallet** with only the funds you intend the agent to manage.
+- Never commit your `.env` file. Add it to `.gitignore`.
+- For production deployments, use a secrets manager or encrypted environment variables.
 
-# Component tests only
-elizaos test component
-# or
-bun test
+## Requirements
 
-# E2E tests only
-elizaos test e2e
-```
-
-### Writing Component Tests
-
-```typescript
-import { describe, it, expect } from 'bun:test';
-
-describe('My Plugin', () => {
-  it('should work correctly', () => {
-    expect(true).toBe(true);
-  });
-});
-```
-
-## Publishing
-
-1. Update `package.json` with your plugin details
-2. Build your plugin: `bun run build`
-3. Publish: `elizaos publish`
-
-## When to Use Quick Starter
-
-Use this template when you need:
-
-- ✅ Backend-only functionality
-- ✅ Simple API integrations
-- ✅ Lightweight plugins
-- ✅ Fast development cycles
-- ✅ Minimal dependencies
-
-Consider the full plugin-kamino if you need:
-
-- ❌ React frontend components
-- ❌ Complex UI interactions
-- ❌ E2E testing with Cypress
-- ❌ Frontend build pipeline
+- Node.js ≥ 24 / Bun
+- elizaOS ≥ 1.7.0
+- A funded Solana wallet (SOL for transaction fees + tokens to lend/borrow)
+- A Solana RPC endpoint (Helius, QuickNode, Triton, or any Solana-compatible provider)
 
 ## License
 
-This template is part of the ElizaOS project.
+MIT
