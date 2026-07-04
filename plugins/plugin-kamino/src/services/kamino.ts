@@ -54,6 +54,7 @@ import {
   createSolanaRpcSubscriptions,
   RpcSubscriptions,
   SolanaRpcSubscriptionsApi,
+  signature,
 } from "@solana/kit";
 
 const DEFAULT_MARKETS: MarketConfig[] = [
@@ -598,15 +599,14 @@ export class KaminoService extends Service {
    * validators like Surfpool that run WS on rpcPort+1).
    */
   private async pollForConfirmation(
-    signature: string,
+    sig: string,
     maxAttempts = 30,
     intervalMs = 1000,
   ): Promise<boolean> {
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const result = await this.rpc
-          // biome-ignore lint/suspicious/noExplicitAny: klend-sdk signature type is opaque
-          .getSignatureStatuses([signature as any])
+          .getSignatureStatuses([signature(sig)])
           .send();
         const status = result.value[0];
         if (
@@ -699,7 +699,7 @@ export class KaminoService extends Service {
       const signedTransaction =
         await signTransactionMessageWithSigners(transactionMessage);
       assertIsTransactionWithinSizeLimit(signedTransaction);
-      const signature = getSignatureFromTransaction(signedTransaction);
+      const sig = getSignatureFromTransaction(signedTransaction);
 
       try {
         await sendAndConfirmTransactionFactory({
@@ -714,16 +714,16 @@ export class KaminoService extends Service {
         logger.warn(
           `[KaminoService] WS confirmation failed (${msg}), polling via HTTP…`,
         );
-        const confirmed = await this.pollForConfirmation(String(signature));
+        const confirmed = await this.pollForConfirmation(sig);
         if (!confirmed) {
           throw wsError;
         }
         logger.info(
-          `[KaminoService] Transaction confirmed via HTTP polling: ${signature}`,
+          `[KaminoService] Transaction confirmed via HTTP polling: ${sig}`,
         );
       }
 
-      return signature;
+      return sig;
     };
 
     try {

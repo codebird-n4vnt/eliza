@@ -5,6 +5,7 @@ import {
   IAgentRuntime,
   Memory,
   State,
+  logger,
 } from "@elizaos/core";
 import { KaminoService } from "../../services/kamino";
 import { parseWithdrawMessage } from "../../utils/parser";
@@ -35,11 +36,11 @@ export const WithdrawAction: Action = {
       const params = await parseWithdrawMessage(runtime, message, state);
       if (!params?.amount || !params?.token) return false;
       const obligation = await service.getUserObligation(
-        params?.marketName ?? "main",
+        params.marketName ?? "main",
         ObligationTypeTag.Vanilla,
       );
       return obligation !== null;
-    } catch (error) {
+    } catch {
       return false;
     }
   },
@@ -47,11 +48,15 @@ export const WithdrawAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     state?: State,
-    _options?: any,
+    _options?: Record<string, unknown>,
     callback?: HandlerCallback,
   ) => {
     try {
       const service = runtime.getService<KaminoService>("kamino-service");
+      if (!service) {
+        throw new Error("KaminoService is not available");
+      }
+
       const currentState = state ?? (await runtime.composeState(message));
       const params = await parseWithdrawMessage(runtime, message, currentState);
       if (!params) {
@@ -62,20 +67,34 @@ export const WithdrawAction: Action = {
         return { success: false, text: "Token and amount not provided." };
       }
 
-      const market = params?.marketName
-        ? service?.getMarket(params?.marketName!)
-        : service?.getDefaultMarket();
-      const reserve = market?.getFloatRateReserveBySymbol(params?.token!);
+      const market = params.marketName
+        ? service.getMarket(params.marketName)
+        : service.getDefaultMarket();
+
+      if (!market) {
+        await callback?.({
+          text: `Market not found: ${params.marketName ?? "main"}`,
+          actions: ["KAMINO_WITHDRAW"],
+        });
+        return { success: false, text: "Market not found." };
+      }
+
+      const reserve = market.getFloatRateReserveBySymbol(params.token);
       if (!reserve) {
         await callback?.({
-          text: `Token reserve cannot be found for ${params?.marketName ?? "main"} market. Please provide a valid token reserve.`,
+          text: `Token reserve cannot be found for ${params.marketName ?? "main"} market. Please provide a valid token reserve.`,
           actions: ["KAMINO_WITHDRAW"],
         });
         return { success: false, text: "Reserve not found" };
       }
 
-      const obligation = await service?.getUserObligation(
-        params?.marketName!,
+      const marketName = market.getName();
+      if (!marketName) {
+        throw new Error("Market has no name — cannot build withdrawal transaction");
+      }
+
+      const obligation = await service.getUserObligation(
+        params.marketName ?? marketName,
         ObligationTypeTag.Vanilla,
       );
 
@@ -97,32 +116,42 @@ export const WithdrawAction: Action = {
           };
         }
       }
-      const deposit = obligation?.deposits.get(reserve?.address!);
+
+      const deposit = obligation?.deposits.get(reserve.address);
+
+      // If amount is "max" we need an active obligation to resolve the balance.
+      if (params.amount === "max" && !obligation) {
+        await callback?.({
+          text: `No active position found for ${params.token} — nothing to withdraw.`,
+          actions: ["KAMINO_WITHDRAW"],
+        });
+        return { success: false, text: "No active position to withdraw from." };
+      }
+
+      // resolveMax requires a non-null obligation only when amount === "max";
+      // the guard above ensures obligation is defined in that branch.
       const decimalAmount = resolveMax(params.amount, obligation!, reserve);
 
-      if (deposit?.amount! < decimalAmount) {
+      if (deposit && deposit.amount.lt(decimalAmount)) {
         await callback?.({
-          text: `You don't have enough deposits of ${params?.token}`,
+          text: `You don't have enough deposits of ${params.token}`,
           actions: ["KAMINO_WITHDRAW"],
         });
         return { success: false, text: `You don't have enough deposits.` };
       }
 
-      const tokenMint = reserve?.getLiquidityMint();
-
-      const action = await service?.buildWithdrawTxns(
-        market?.getName()!,
-        tokenMint!,
+      const tokenMint = reserve.getLiquidityMint();
+      const action = await service.buildWithdrawTxns(
+        marketName,
+        tokenMint,
         decimalAmount,
       );
 
-      const tx = await service?.sendActionTransaction(action!);
+      const tx = await service.sendActionTransaction(action);
 
-      let amount = params?.amount!;
-      let token = params?.token!;
-
+      const { amount, token } = params;
       await callback?.({
-        text: `Succesfully withdrawn **${params?.amount === "max" ? "all" : amount} ${params?.token}** collateral to your wallet. Transaction: ${tx!.join(", ")}`,
+        text: `Succesfully withdrawn **${amount === "max" ? "all" : amount} ${token}** collateral to your wallet. Transaction: ${tx.join(", ")}`,
         actions: ["KAMINO_WITHDRAW"],
         data: { amount, token, tx },
       });
@@ -132,8 +161,9 @@ export const WithdrawAction: Action = {
         data: { amount, token, tx },
       };
     } catch (error) {
+      logger.error(`[KAMINO_WITHDRAW] Handler failed: ${error}`);
       await callback?.({
-        text: `Withdraw failed : ${error}`,
+        text: `Withdraw failed: ${error}`,
         actions: ["KAMINO_WITHDRAW"],
         data: { error: String(error) },
       });
