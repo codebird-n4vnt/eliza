@@ -1,3 +1,4 @@
+/** KAMINO_BORROW action — borrows tokens against deposited collateral on Kamino Finance. */
 import {
   Action,
   HandlerCallback,

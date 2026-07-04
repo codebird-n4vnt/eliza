@@ -1,3 +1,4 @@
+/** Test utilities for @elizaos/plugin-kamino unit tests — mock IAgentRuntime, Memory, and State factories with no live RPC dependency. */
 import { mock, spyOn } from "bun:test";
 import {
   type IAgentRuntime,

@@ -1,3 +1,4 @@
+/** KAMINO_RESERVES action — queries live reserve APYs, liquidity, and LTV data from loaded Kamino markets. */
 import {
   Action,
   HandlerCallback,

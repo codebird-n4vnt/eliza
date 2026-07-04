@@ -1,3 +1,4 @@
+/** Shared TypeScript interfaces for @elizaos/plugin-kamino: market config, reserve data, position info, action params, and health check results. */
 import type { KaminoObligation } from "@kamino-finance/klend-sdk";
 
 // ─── Market Registry ────────────────────────────────────────────────────────

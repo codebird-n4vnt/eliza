@@ -1,3 +1,4 @@
+/** KAMINO_WITHDRAW action — withdraws collateral from a Kamino lending market. */
 import {
   Action,
   HandlerCallback,

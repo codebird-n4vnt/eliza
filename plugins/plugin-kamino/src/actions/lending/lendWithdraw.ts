@@ -1,3 +1,4 @@
+/** KAMINO_LEND_WITHDRAW action — redeems previously supplied tokens from a Kamino reserve. */
 import {
   Action,
   HandlerCallback,

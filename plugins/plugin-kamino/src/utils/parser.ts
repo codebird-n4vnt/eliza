@@ -1,3 +1,4 @@
+/** LLM response parser — extracts typed action parameters (token, amount, marketName) from free-form text returned by the language model. */
 import {
   IAgentRuntime,
   JSONSchema,

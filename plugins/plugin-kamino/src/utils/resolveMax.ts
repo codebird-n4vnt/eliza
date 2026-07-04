@@ -1,3 +1,4 @@
+/** resolveMax — resolves the string literal 'max' to the actual outstanding balance for repay and withdraw operations. */
 import { KaminoObligation, KaminoReserve } from "@kamino-finance/klend-sdk";
 import Decimal from "decimal.js";
 

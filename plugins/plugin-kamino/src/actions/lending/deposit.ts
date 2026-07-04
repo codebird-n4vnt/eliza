@@ -1,3 +1,4 @@
+/** KAMINO_DEPOSIT action — deposits tokens as collateral into a Kamino lending market. */
 import {
   Action,
   HandlerCallback,

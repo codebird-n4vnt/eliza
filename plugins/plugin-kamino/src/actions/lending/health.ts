@@ -1,3 +1,4 @@
+/** KAMINO_HEALTH action — reports health factor, borrow limit, and liquidation risk for the wallet's Kamino obligations. */
 import {
   Action,
   HandlerCallback,

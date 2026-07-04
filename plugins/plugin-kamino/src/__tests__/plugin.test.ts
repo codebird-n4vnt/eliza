@@ -1,698 +1,174 @@
-import {
-  describe,
-  expect,
-  it,
-  spyOn,
-  beforeEach,
-  afterEach,
-  beforeAll,
-  afterAll,
-} from "bun:test";
-import { starterPlugin, StarterService } from "../index";
-import {
-  type IAgentRuntime,
-  type Memory,
-  type State,
-  type Content,
-  type HandlerCallback,
-  ModelType,
-  logger,
-  EventType,
-  Action,
-} from "@elizaos/core";
-import dotenv from "dotenv";
-import {
-  createMockRuntime,
-  createTestMemory,
-  createTestState,
-  createUUID,
-  testFixtures,
-} from "./test-utils";
+/**
+ * Unit tests for @elizaos/plugin-kamino.
+ *
+ * Tests KaminoPlugin metadata, init validation, and per-action validate()
+ * behaviour against a mock runtime — no live RPC calls are made here.
+ */
+import { describe, expect, it, beforeEach } from "bun:test";
+import { KaminoPlugin } from "../index";
+import type { Action } from "@elizaos/core";
+import { createMockRuntime, createTestMemory } from "./test-utils";
 
-// Define proper interfaces for test mocking
-interface MockLoggerMethod {
-  calls?: any[];
-}
+// ─── Plugin metadata ─────────────────────────────────────────────────────────
 
-interface MockLogger {
-  info: MockLoggerMethod;
-  error: MockLoggerMethod;
-  debug: MockLoggerMethod;
-  warn: MockLoggerMethod;
-}
-
-interface PluginConfig {
-  EXAMPLE_PLUGIN_VARIABLE?: string | number;
-}
-
-interface TestCallbackContent {
-  text?: string;
-  actions?: string[];
-  source?: string;
-}
-
-interface TestActionResult {
-  text?: string;
-  success: boolean;
-  data?: {
-    actions?: string[];
-    source?: string;
-  };
-  error?: Error;
-}
-
-// Setup environment variables
-dotenv.config();
-
-// Need to spy on logger
-beforeAll(() => {
-  spyOn(logger, "info");
-  spyOn(logger, "error");
-  spyOn(logger, "warn");
-  spyOn(logger, "debug");
-});
-
-afterAll(() => {
-  // No global restore needed in bun:test
-});
-
-describe("Plugin Configuration", () => {
-  it("should have correct plugin metadata", () => {
-    // Check that plugin has required metadata (values will change when template is used)
-    expect(starterPlugin.name).toBeDefined();
-    expect(starterPlugin.name).toMatch(/^[a-z0-9-]+$/); // Valid plugin name format
-    expect(starterPlugin.description).toBeDefined();
-    expect(starterPlugin.description.length).toBeGreaterThan(0);
-    expect(starterPlugin.actions).toBeDefined();
-    expect(starterPlugin.actions?.length).toBeGreaterThan(0);
-    expect(starterPlugin.providers).toBeDefined();
-    expect(starterPlugin.providers?.length).toBeGreaterThan(0);
-    expect(starterPlugin.services).toBeDefined();
-    expect(starterPlugin.services?.length).toBeGreaterThan(0);
-    expect(starterPlugin.models).toBeDefined();
-    expect(starterPlugin.models?.[ModelType.TEXT_SMALL]).toBeDefined();
-    expect(starterPlugin.models?.[ModelType.TEXT_LARGE]).toBeDefined();
-    expect(starterPlugin.routes).toBeDefined();
-    expect(starterPlugin.routes?.length).toBeGreaterThan(0);
-    expect(starterPlugin.events).toBeDefined();
+describe("KaminoPlugin metadata", () => {
+  it("exports a plugin with the correct name", () => {
+    expect(KaminoPlugin.name).toBe("plugin-kamino");
   });
 
-  it("should initialize with valid configuration", async () => {
-    const runtime = createMockRuntime();
-    const config = { EXAMPLE_PLUGIN_VARIABLE: "test-value" };
-
-    if (starterPlugin.init) {
-      await starterPlugin.init(config, runtime);
-      expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe("test-value");
-    }
+  it("has a non-empty description", () => {
+    expect(KaminoPlugin.description.length).toBeGreaterThan(0);
   });
 
-  it("should handle initialization without config", async () => {
-    const runtime = createMockRuntime();
-
-    if (starterPlugin.init) {
-      // Init should not throw even with empty config
-      await starterPlugin.init({}, runtime);
-    }
+  it("registers exactly 8 actions", () => {
+    expect(KaminoPlugin.actions).toBeDefined();
+    expect(KaminoPlugin.actions?.length).toBe(8);
   });
 
-  it("should throw error for invalid configuration", async () => {
-    const runtime = createMockRuntime();
-    const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: 123 }; // Should be string
-
-    if (starterPlugin.init) {
-      await expect(
-        starterPlugin.init(invalidConfig as PluginConfig, runtime),
-      ).rejects.toThrow("Invalid plugin configuration");
-    }
+  it("registers the KAMINO_MARKET provider", () => {
+    const names = KaminoPlugin.providers?.map((p) => p.name) ?? [];
+    expect(names).toContain("KAMINO_MARKET");
   });
 
-  it("should handle ZodError with issues array correctly", async () => {
-    const runtime = createMockRuntime();
-    const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: "" }; // Empty string violates min(1)
-
-    if (starterPlugin.init) {
-      try {
-        await starterPlugin.init(invalidConfig, runtime);
-        throw new Error("Should have thrown error");
-      } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-        const errorMessage = (error as Error).message;
-        expect(errorMessage).toContain("Invalid plugin configuration");
-        // Should use error.issues, not error.errors
-        expect(errorMessage).toContain(
-          "Example plugin variable is not provided",
-        );
-      }
-    }
+  it("registers the KaminoService", () => {
+    expect(KaminoPlugin.services).toBeDefined();
+    expect(KaminoPlugin.services?.length).toBeGreaterThan(0);
   });
 
-  it("should handle ZodError with fallback for undefined issues", async () => {
-    const runtime = createMockRuntime();
-    // Test that the error handling doesn't crash if issues is somehow undefined
-    const invalidConfig = { EXAMPLE_PLUGIN_VARIABLE: null };
-
-    if (starterPlugin.init) {
-      try {
-        await starterPlugin.init(invalidConfig as any, runtime);
-        throw new Error("Should have thrown error");
-      } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-        const errorMessage = (error as Error).message;
-        // Should either show specific error or fallback message
-        expect(errorMessage).toContain("Invalid plugin configuration");
-      }
-    }
-  });
-
-  it("should handle non-ZodError exceptions", async () => {
-    const runtime = createMockRuntime();
-    // Pass a config that will cause validation but won't be a ZodError
-    const config = { EXAMPLE_PLUGIN_VARIABLE: "valid-value" };
-
-    if (starterPlugin.init) {
-      // This should succeed without throwing
-      let error: Error | null = null;
-      try {
-        await starterPlugin.init(config, runtime);
-      } catch (e) {
-        error = e as Error;
-      }
-      expect(error).toBeNull();
-      expect(process.env.EXAMPLE_PLUGIN_VARIABLE).toBe("valid-value");
-    }
+  it("registers a /api/kamino/status route", () => {
+    const paths = KaminoPlugin.routes?.map((r) => r.path) ?? [];
+    expect(paths).toContain("/api/kamino/status");
   });
 });
 
-describe("Hello World Action", () => {
-  let runtime: IAgentRuntime;
-  let helloWorldAction: Action;
+// ─── Plugin init validation ───────────────────────────────────────────────────
 
-  beforeEach(() => {
-    runtime = createMockRuntime();
-    helloWorldAction = starterPlugin?.actions?.[0] as Action;
-    // Clear all spies before each test
-    // Logger mock for testing - logger has all required methods
-    const mockLogger = logger as MockLogger;
-    mockLogger.info.calls = [];
-    mockLogger.error.calls = [];
-    mockLogger.debug.calls = [];
-    mockLogger.warn.calls = [];
+describe("KaminoPlugin.init config validation", () => {
+  it("resolves without throwing when required vars are present", async () => {
+    await expect(
+      KaminoPlugin.init!(
+        {
+          SOLANA_RPC_URL: "https://api.mainnet-beta.solana.com",
+          SOLANA_PRIVATE_KEY: "11111111111111111111111111111111",
+        },
+        createMockRuntime(),
+      ),
+    ).resolves.toBeUndefined();
   });
 
-  it("should have hello world action", () => {
-    expect(helloWorldAction).toBeDefined();
-    expect(helloWorldAction?.name).toBe("QUICK_ACTION");
+  it("throws when SOLANA_RPC_URL is missing", async () => {
+    await expect(
+      KaminoPlugin.init!(
+        { SOLANA_PRIVATE_KEY: "somekey" },
+        createMockRuntime(),
+      ),
+    ).rejects.toThrow(/Invalid plugin-kamino configuration/);
   });
 
-  it("should always validate messages (current implementation)", async () => {
-    if (!helloWorldAction?.validate) {
-      throw new Error("Hello world action validate not found");
-    }
-
-    const validMessages = [
-      "say hello",
-      "hello world",
-      "Please say HELLO",
-      "can you say hello?",
-    ];
-
-    // The current implementation always returns true
-    // This test documents the actual behavior
-    for (const text of validMessages) {
-      const message = createTestMemory({
-        content: { text, source: "test" },
-      });
-      const isValid = await helloWorldAction.validate(runtime, message);
-      expect(isValid).toBe(true);
-    }
+  it("throws when SOLANA_PRIVATE_KEY is missing", async () => {
+    await expect(
+      KaminoPlugin.init!(
+        { SOLANA_RPC_URL: "https://api.mainnet-beta.solana.com" },
+        createMockRuntime(),
+      ),
+    ).rejects.toThrow(/Invalid plugin-kamino configuration/);
   });
 
-  it("should properly validate hello messages", async () => {
-    if (!helloWorldAction?.validate) {
-      throw new Error("Hello world action validate not found");
-    }
-
-    // The current implementation always returns true
-    // Test that it accepts all messages
-    const helloMessages = [
-      "hello",
-      "hi there",
-      "hey!",
-      "greetings",
-      "howdy partner",
-    ];
-    for (const text of helloMessages) {
-      const message = createTestMemory({
-        content: { text, source: "test" },
-      });
-      const isValid = await helloWorldAction.validate(runtime, message);
-      expect(isValid).toBe(true);
-    }
-
-    // Should also accept non-hello messages since validate always returns true
-    const nonHelloMessages = [
-      "goodbye",
-      "what is the weather",
-      "tell me a joke",
-    ];
-    for (const text of nonHelloMessages) {
-      const message = createTestMemory({
-        content: { text, source: "test" },
-      });
-      const isValid = await helloWorldAction.validate(runtime, message);
-      expect(isValid).toBe(true);
-    }
-
-    // Test empty string - also returns true
-    const emptyMessage = createTestMemory({
-      content: { text: "", source: "test" },
-    });
-    const isEmptyValid = await helloWorldAction.validate(runtime, emptyMessage);
-    expect(isEmptyValid).toBe(true);
+  it("throws when either var is an empty string", async () => {
+    await expect(
+      KaminoPlugin.init!(
+        { SOLANA_RPC_URL: "", SOLANA_PRIVATE_KEY: "" },
+        createMockRuntime(),
+      ),
+    ).rejects.toThrow(/Invalid plugin-kamino configuration/);
   });
 
-  it("should validate even without text content", async () => {
-    if (!helloWorldAction?.validate) {
-      throw new Error("Hello world action validate not found");
-    }
-
-    const messageWithoutText = createTestMemory({
-      content: { source: "test" } as Content,
-    });
-
-    const isValid = await helloWorldAction.validate(
-      runtime,
-      messageWithoutText,
-    );
-    // Always returns true since validate always returns true
-    expect(isValid).toBe(true);
-  });
-
-  it("should handle hello world action with callback", async () => {
-    if (!helloWorldAction?.handler) {
-      throw new Error("Hello world action handler not found");
-    }
-
-    const message = createTestMemory({
-      content: { text: "say hello", source: "test" },
-    });
-
-    let callbackContent: TestCallbackContent | null = null;
-    const callback: HandlerCallback = async (content: Content) => {
-      callbackContent = content as TestCallbackContent;
-      return [];
-    };
-
-    const result = await helloWorldAction.handler(
-      runtime,
-      message,
-      undefined,
-      undefined,
-      callback,
-    );
-
-    expect(result).toHaveProperty("text", "Hello world!");
-    expect(result).toHaveProperty("success", true);
-    expect(result).toHaveProperty("data");
-    const typedResult = result as TestActionResult;
-    expect(typedResult.data).toHaveProperty("actions", ["QUICK_ACTION"]);
-    expect(typedResult.data).toHaveProperty("source", "test");
-
-    expect(callbackContent).toEqual({
-      text: "Hello world!",
-      actions: ["QUICK_ACTION"],
-      source: "test",
-    });
-  });
-
-  it("should handle errors gracefully", async () => {
-    if (!helloWorldAction?.handler) {
-      throw new Error("Hello world action handler not found");
-    }
-
-    const message = createTestMemory({
-      content: { text: "say hello", source: "test" },
-    });
-
-    const errorCallback: HandlerCallback = async () => {
-      throw new Error("Callback error");
-    };
-
-    const result = await helloWorldAction.handler(
-      runtime,
-      message,
-      undefined,
-      undefined,
-      errorCallback,
-    );
-
-    expect(result).toHaveProperty("success", false);
-    expect(result).toHaveProperty("error");
-    const typedResult = result as TestActionResult;
-    expect(typedResult.error?.message).toBe("Callback error");
-    // Quick-starter plugin doesn't log errors
-  });
-
-  it("should handle missing callback gracefully", async () => {
-    if (!helloWorldAction?.handler) {
-      throw new Error("Hello world action handler not found");
-    }
-
-    const message = createTestMemory({
-      content: { text: "say hello", source: "test" },
-    });
-
-    const result = await helloWorldAction.handler(
-      runtime,
-      message,
-      undefined,
-      undefined,
-      undefined,
-    );
-
-    expect(result).toHaveProperty("text", "Hello world!");
-    expect(result).toHaveProperty("success", true);
-  });
-
-  it("should handle state parameter correctly", async () => {
-    if (!helloWorldAction?.handler) {
-      throw new Error("Hello world action handler not found");
-    }
-
-    const message = createTestMemory({
-      content: { text: "say hello", source: "test" },
-    });
-
-    const state = createTestState({
-      values: { customValue: "test-state" },
-    });
-
-    const result = await helloWorldAction.handler(
-      runtime,
-      message,
-      state,
-      undefined,
-      undefined,
-    );
-
-    expect(result).toHaveProperty("success", true);
-  });
-});
-
-describe("Hello World Provider", () => {
-  const provider = starterPlugin.providers?.[0];
-  let runtime: IAgentRuntime;
-
-  beforeEach(() => {
-    runtime = createMockRuntime();
-  });
-
-  it("should have hello world provider", () => {
-    expect(provider).toBeDefined();
-    expect(provider?.name).toBe("QUICK_PROVIDER");
-  });
-
-  it("should provide hello world data", async () => {
-    if (!provider?.get) {
-      throw new Error("Hello world provider not found");
-    }
-
-    const message = createTestMemory();
-    const state = createTestState();
-
-    const result = await provider.get(runtime, message, state);
-
-    expect(result).toHaveProperty("text", "I am a provider");
-    expect(result).toHaveProperty("values");
-    expect(result.values).toEqual({});
-    expect(result).toHaveProperty("data");
-    expect(result.data).toEqual({});
-  });
-
-  it("should provide consistent structure across calls", async () => {
-    if (!provider?.get) {
-      throw new Error("Hello world provider not found");
-    }
-
-    const message = createTestMemory();
-    const state = createTestState();
-
-    const result1 = await provider.get(runtime, message, state);
-    const result2 = await provider.get(runtime, message, state);
-
-    // Text and structure should be consistent
-    expect(result1.text).toBeDefined();
-    expect(result2.text).toBeDefined();
-    expect(result1.text).toBe(result2.text);
-    expect(result1.values || {}).toEqual(result2.values || {});
-    expect(result1.data || {}).toEqual(result2.data || {});
-  });
-});
-
-describe("Model Handlers", () => {
-  let runtime: IAgentRuntime;
-
-  beforeEach(() => {
-    runtime = createMockRuntime();
-  });
-
-  it("should handle TEXT_SMALL model", async () => {
-    const handler = starterPlugin.models?.[ModelType.TEXT_SMALL];
-    if (!handler) {
-      throw new Error("TEXT_SMALL model handler not found");
-    }
-
-    const result = await handler(runtime, { prompt: "Test prompt" });
-
-    expect(result).toContain("Never gonna give you up");
-  });
-
-  it("should handle TEXT_LARGE model with custom parameters", async () => {
-    const handler = starterPlugin.models?.[ModelType.TEXT_LARGE];
-    if (!handler) {
-      throw new Error("TEXT_LARGE model handler not found");
-    }
-
-    const result = await handler(runtime, {
-      prompt: "Test prompt with custom settings",
-      maxTokens: 1000,
-      temperature: 0.5,
-      frequencyPenalty: 0.5,
-      presencePenalty: 0.5,
-    });
-
-    expect(result).toContain("Never gonna make you cry");
-  });
-
-  it("should handle empty prompt", async () => {
-    const handler = starterPlugin.models?.[ModelType.TEXT_SMALL];
-    if (!handler) {
-      throw new Error("TEXT_SMALL model handler not found");
-    }
-
-    const result = await handler(runtime, { prompt: "" });
-
-    expect(typeof result).toBe("string");
-    expect(result.length).toBeGreaterThan(0);
-  });
-
-  it("should handle missing parameters", async () => {
-    const handler = starterPlugin.models?.[ModelType.TEXT_LARGE];
-    if (!handler) {
-      throw new Error("TEXT_LARGE model handler not found");
-    }
-
-    const result = await handler(runtime, { prompt: "Test prompt" });
-
-    expect(typeof result).toBe("string");
-    expect(result.length).toBeGreaterThan(0);
-  });
-});
-
-describe("API Routes", () => {
-  let runtime: IAgentRuntime;
-
-  beforeEach(() => {
-    runtime = createMockRuntime();
-  });
-
-  it("should handle status route", async () => {
-    const statusRoute = starterPlugin.routes?.[0];
-    if (!statusRoute?.handler) {
-      throw new Error("Status route handler not found");
-    }
-
-    const mockRes = {
-      json: (data: any) => {
-        mockRes._jsonData = data;
+  it("does not mutate process.env during init", async () => {
+    const before = process.env.SOLANA_RPC_URL;
+    await KaminoPlugin.init!(
+      {
+        SOLANA_RPC_URL: "https://test-rpc.example.com",
+        SOLANA_PRIVATE_KEY: "somekey",
       },
-      _jsonData: null as any,
-    };
-
-    await statusRoute.handler({}, mockRes, runtime);
-
-    expect(mockRes._jsonData).toBeDefined();
-    expect(mockRes._jsonData.status).toBe("ok");
-    expect(mockRes._jsonData.plugin).toBe("quick-starter");
-    expect(mockRes._jsonData.timestamp).toBeDefined();
-  });
-
-  it("should validate route configuration", () => {
-    const statusRoute = starterPlugin.routes?.[0];
-
-    expect(statusRoute).toBeDefined();
-    expect(statusRoute?.path).toBe("/api/status");
-    expect(statusRoute?.type).toBe("GET");
-    // Routes don't have a public property in the current implementation
-    expect(statusRoute?.handler).toBeDefined();
-  });
-
-  it("should handle request with query parameters", async () => {
-    const statusRoute = starterPlugin.routes?.[0];
-    if (!statusRoute?.handler) {
-      throw new Error("Status route handler not found");
-    }
-
-    const mockReq = {
-      query: {
-        verbose: "true",
-      },
-    };
-
-    const mockRes = {
-      json: (data: any) => {
-        mockRes._jsonData = data;
-      },
-      _jsonData: null as any,
-    };
-
-    await statusRoute.handler(mockReq, mockRes, runtime);
-
-    expect(mockRes._jsonData).toBeDefined();
-    expect(mockRes._jsonData.status).toBe("ok");
+      createMockRuntime(),
+    );
+    // init must not write back to process.env
+    expect(process.env.SOLANA_RPC_URL).toBe(before);
   });
 });
 
-describe("Event Handlers", () => {
-  beforeEach(() => {
-    // Clear logger spy calls
-    (logger.debug as any).calls = [];
-    (logger.info as any).calls = [];
-    (logger.error as any).calls = [];
-  });
+// ─── Action names ─────────────────────────────────────────────────────────────
 
-  it("should log when MESSAGE_RECEIVED event is triggered", async () => {
-    const handler = starterPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
-    if (!handler) {
-      throw new Error("MESSAGE_RECEIVED event handler not found");
-    }
+describe("KaminoPlugin action names", () => {
+  const expectedActions = [
+    "KAMINO_LEND",
+    "KAMINO_LEND_WITHDRAW",
+    "KAMINO_DEPOSIT",
+    "KAMINO_WITHDRAW",
+    "KAMINO_BORROW",
+    "KAMINO_REPAY",
+    "KAMINO_RESERVES",
+    "KAMINO_HEALTH",
+  ];
 
-    const payload = testFixtures.messagePayload();
-    await handler(payload);
-
-    expect(logger.debug).toHaveBeenCalled();
-  });
-
-  it("should handle malformed event payload", async () => {
-    const handler = starterPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
-    if (!handler) {
-      throw new Error("MESSAGE_RECEIVED event handler not found");
-    }
-
-    const malformedPayload = {
-      // Missing required fields
-      runtime: createMockRuntime(),
-    };
-
-    // Should not throw
-    // Handler doesn't actually use the payload, just logs
-    await handler(malformedPayload as any);
-  });
-
-  it("should handle event with empty message content", async () => {
-    const handler = starterPlugin.events?.[EventType.MESSAGE_RECEIVED]?.[0];
-    if (!handler) {
-      throw new Error("MESSAGE_RECEIVED event handler not found");
-    }
-
-    const payload = testFixtures.messagePayload({
-      content: {},
+  for (const name of expectedActions) {
+    it(`registers action ${name}`, () => {
+      const action = KaminoPlugin.actions?.find((a) => a.name === name);
+      expect(action).toBeDefined();
     });
-
-    await handler(payload);
-    expect(logger.debug).toHaveBeenCalled();
-  });
+  }
 });
 
-describe("StarterService", () => {
-  let runtime: IAgentRuntime;
+// ─── Action validate() — service not initialised ─────────────────────────────
+
+describe("Action validate() with uninitialised service", () => {
+  let runtime: ReturnType<typeof createMockRuntime>;
 
   beforeEach(() => {
-    runtime = createMockRuntime();
-    // Clear logger spy calls
-    (logger.info as any).calls = [];
-    (logger.error as any).calls = [];
+    // getService returns null → KaminoService not yet started
+    runtime = createMockRuntime({ getService: () => null });
   });
 
-  it("should start the service", async () => {
-    const service = await StarterService.start(runtime);
-    expect(service).toBeInstanceOf(StarterService);
-    expect(logger.info).toHaveBeenCalled();
-  });
+  const actionNames = [
+    "KAMINO_LEND",
+    "KAMINO_DEPOSIT",
+    "KAMINO_BORROW",
+    "KAMINO_REPAY",
+    "KAMINO_LEND_WITHDRAW",
+    "KAMINO_WITHDRAW",
+  ];
 
-  it("should have correct service type", () => {
-    expect(StarterService.serviceType).toBe("starter");
-  });
-
-  it("should stop service correctly", async () => {
-    // Start service
-    const service = await StarterService.start(runtime);
-
-    // Create a new runtime with the service registered
-    const runtimeWithService = createMockRuntime({
-      getService: () => service as any,
+  for (const name of actionNames) {
+    it(`${name}.validate() returns false when service is not ready`, async () => {
+      const action = KaminoPlugin.actions?.find(
+        (a) => a.name === name,
+      ) as Action;
+      expect(action).toBeDefined();
+      const message = createTestMemory({
+        content: { text: `test ${name.toLowerCase()}`, source: "test" },
+      });
+      const result = await action.validate(runtime, message);
+      expect(result).toBe(false);
     });
+  }
+});
 
-    // Stop service
-    await StarterService.stop(runtimeWithService);
-    expect(logger.info).toHaveBeenCalled();
-  });
+// ─── /api/kamino/status route ─────────────────────────────────────────────────
 
-  it("should throw error when stopping non-existent service", async () => {
-    const emptyRuntime = createMockRuntime({
-      getService: () => null,
-    });
-
-    await expect(StarterService.stop(emptyRuntime)).rejects.toThrow(
-      "Starter service not found",
+describe("KaminoPlugin status route", () => {
+  it("returns status:ok with plugin name and timestamp", async () => {
+    const route = KaminoPlugin.routes?.find(
+      (r) => r.path === "/api/kamino/status",
     );
-  });
+    expect(route?.handler).toBeDefined();
 
-  it("should handle multiple start/stop cycles", async () => {
-    // First cycle
-    const service1 = await StarterService.start(runtime);
-    expect(service1).toBeInstanceOf(StarterService);
+    let captured: Record<string, unknown> = {};
+    const mockRes = { json: (data: Record<string, unknown>) => { captured = data; } };
 
-    const runtimeWithService1 = createMockRuntime({
-      getService: () => service1 as any,
-    });
-    await StarterService.stop(runtimeWithService1);
+    await route!.handler({} as never, mockRes as never, createMockRuntime());
 
-    // Second cycle
-    const service2 = await StarterService.start(runtime);
-    expect(service2).toBeInstanceOf(StarterService);
-
-    const runtimeWithService2 = createMockRuntime({
-      getService: () => service2 as any,
-    });
-    await StarterService.stop(runtimeWithService2);
-  });
-
-  it("should provide capability description", async () => {
-    const service = await StarterService.start(runtime);
-    expect(service.capabilityDescription).toBe(
-      "This is a starter service which is attached to the agent through the starter plugin.",
-    );
+    expect(captured.status).toBe("ok");
+    expect(captured.plugin).toBe("plugin-kamino");
+    expect(typeof captured.timestamp).toBe("string");
   });
 });

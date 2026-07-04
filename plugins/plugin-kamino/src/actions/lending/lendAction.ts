@@ -1,3 +1,4 @@
+/** KAMINO_LEND action — supplies tokens to a Kamino reserve to earn yield (lending-side deposit). */
 import {
   Action,
   HandlerCallback,

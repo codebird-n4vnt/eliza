@@ -1,3 +1,14 @@
+/**
+ * KaminoService — elizaOS service wrapping the @kamino-finance/klend-sdk.
+ *
+ * Manages one or more KaminoMarket instances, exposes typed helpers for every
+ * lending action (lend, borrow, deposit collateral, withdraw, repay), and
+ * handles transaction confirmation with a WebSocket-first / HTTP-polling
+ * fallback strategy so the elizaOS UI never shows a false Error on a confirmed
+ * transaction.
+ *
+ * Private keys are kept in memory only — never written to disk.
+ */
 import { IAgentRuntime, logger, Service } from "@elizaos/core";
 import type {
   KaminoPluginSettings,
@@ -20,13 +31,13 @@ import {
 import { setInterval } from "timers";
 import { Decimal } from "decimal.js";
 import * as path from "path";
-import * as fs from "fs";
 import * as os from "os";
 import bs58 from "bs58";
 import BN from "bn.js";
 import {
   address,
   createSolanaRpc,
+  createKeyPairSignerFromBytes,
   KeyPairSigner,
   Rpc,
   SolanaRpcApi,
@@ -39,9 +50,10 @@ import {
   signTransactionMessageWithSigners,
   sendAndConfirmTransactionFactory,
   getSignatureFromTransaction,
-  assertIsTransactionMessageWithinSizeLimit,
-  createSolanaRpcSubscriptions,
   assertIsTransactionWithinSizeLimit,
+  createSolanaRpcSubscriptions,
+  RpcSubscriptions,
+  SolanaRpcSubscriptionsApi,
 } from "@solana/kit";
 
 const DEFAULT_MARKETS: MarketConfig[] = [
@@ -54,15 +66,20 @@ const DEFAULT_MARKETS: MarketConfig[] = [
 
 const DEFAULT_REFRESH_MS = 30000;
 
+/** Shape returned by every KaminoAction.build* helper. */
+interface KaminoTxns {
+  setupIxs: unknown[];
+  lendingIxs: unknown[];
+  cleanupIxs: unknown[];
+  computeBudgetIxs: unknown[];
+}
+
 export class KaminoService extends Service {
-  /**
-   * Required by elizaOS: the key used by runtime.getService("kamino-service")
-   * and also the key under which the service is stored in the services map.
-   */
+  /** Key used by runtime.getService("kamino-service"). */
   static serviceType = "kamino-service";
 
   private rpc!: Rpc<SolanaRpcApi>;
-  private rpcSubscriptions: any;
+  private rpcSubscriptions!: RpcSubscriptions<SolanaRpcSubscriptionsApi>;
   private signer: KeyPairSigner<string> | null = null;
   private markets: Map<string, KaminoMarket> = new Map();
   private refreshTimer: NodeJS.Timeout | null = null;
@@ -81,10 +98,7 @@ export class KaminoService extends Service {
     super(runtime);
   }
 
-  /**
-   * Required by elizaOS: the runtime calls `ServiceClass.start(runtime)` to
-   * create and initialize the service. Must return the service instance.
-   */
+  /** elizaOS entry point — creates and initialises the service. */
   static async start(runtime: IAgentRuntime): Promise<KaminoService> {
     const service = new KaminoService(runtime);
     await service.initialize();
@@ -105,12 +119,11 @@ export class KaminoService extends Service {
     logger.info(`[KaminoService] RPC: ${settings.rpcUrl}  WS: ${settings.wsUrl}`);
 
     this.signer = await this.loadSigner(settings);
-    // this.currentSlot = await this.rpc.getSlot().send();
 
     if (!this.signer) {
       throw new Error(
-        "KaminoService: No signer found " +
-          `Set KAMINO_PRIVATE_KEY (base58) or KAMINO_KEYPAIR_PATH in settings.secrets`,
+        "KaminoService: no signer found. " +
+          "Set SOLANA_PRIVATE_KEY (base58) or SOLANA_KEYPAIR_PATH.",
       );
     }
 
@@ -126,32 +139,30 @@ export class KaminoService extends Service {
         );
 
         if (!market) {
-          console.error(
-            `[KaminoService] Market ${marketConfig.name} returned null from load()`,
+          logger.warn(
+            `[KaminoService] Market ${marketConfig.name} returned null from load() — skipping`,
           );
           continue;
         }
 
-        await market?.loadReserves();
-        this.markets.set(marketConfig.name, market!);
-        console.log(`[KaminoService] Loaded market: ${marketConfig.name}`);
+        await market.loadReserves();
+        this.markets.set(marketConfig.name, market);
+        logger.info(`[KaminoService] Loaded market: ${marketConfig.name}`);
       } catch (error) {
-        console.error(
-          `[KaminoService] Failed to load market ${marketConfig.name}:`,
-          error,
+        logger.error(
+          `[KaminoService] Failed to load market ${marketConfig.name}: ${error}`,
         );
       }
     }
 
     if (this.markets.size === 0) {
-      throw new Error("KaminoService: No markets could be loaded");
+      throw new Error("KaminoService: no markets could be loaded");
     }
 
     await this.refreshReservesCache();
-
     this.startRefreshTimer(settings.refreshIntervalMs);
     this.isReady = true;
-    console.log(
+    logger.info(
       `[KaminoService] Initialized with ${this.markets.size} market(s)`,
     );
   }
@@ -163,20 +174,19 @@ export class KaminoService extends Service {
         string
       >) || {};
 
-    // Helper: getSetting() returns null when not set; String(null) === "null"
-    // which is truthy, making all fallbacks unreachable. Strip those out.
+    // getSetting() returns null when not set; String(null) === "null" which is
+    // truthy, making all fallbacks unreachable — strip those out.
     const getSafe = (key: string): string | undefined => {
       const raw = this.runtime.getSetting(key);
       if (raw === null || raw === undefined) return undefined;
       const str = String(raw).trim();
       if (str === "null" || str === "undefined" || str === "") return undefined;
-      // Detect dotenvx-encrypted values (AQ. prefix) — the dotenvx CLI
-      // decrypts these before the process sees them, so if we still see the
-      // cipher text it means the DOTENV_PRIVATE_KEY is missing/wrong.
+      // Dotenvx-encrypted values (AQ. prefix) were not decrypted — warn and
+      // treat as missing so the caller surfaces a clear error.
       if (str.startsWith("AQ.")) {
         logger.warn(
-          `[KaminoService] ${key} appears to be a dotenvx-encrypted value that was not decrypted. ` +
-          `Ensure DOTENV_PRIVATE_KEY is set, or replace the value with a plain-text secret.`
+          `[KaminoService] ${key} appears to be an undecrypted dotenvx value. ` +
+            "Ensure DOTENV_PRIVATE_KEY is set.",
         );
         return undefined;
       }
@@ -189,20 +199,17 @@ export class KaminoService extends Service {
       "https://api.mainnet-beta.solana.com";
 
     // SOLANA_WS_URL can be set explicitly (recommended for local validators
-    // like Surfpool which run WS on a different port than RPC). If not set,
-    // the scheme is derived from the RPC URL (https→wss, http→ws).
+    // like Surfpool that expose WS on a different port than RPC).
     const wsUrl =
       getSafe("SOLANA_WS_URL") ??
       secrets.SOLANA_WS_URL ??
       rpcUrl.replace("https://", "wss://").replace("http://", "ws://");
 
     const privateKey =
-      getSafe("SOLANA_PRIVATE_KEY") ??
-      secrets.SOLANA_PRIVATE_KEY;
+      getSafe("SOLANA_PRIVATE_KEY") ?? secrets.SOLANA_PRIVATE_KEY;
 
     const keypairPath =
-      getSafe("SOLANA_KEYPAIR_PATH") ??
-      secrets.SOLANA_KEYPAIR_PATH;
+      getSafe("SOLANA_KEYPAIR_PATH") ?? secrets.SOLANA_KEYPAIR_PATH;
 
     const refreshIntervalMs = parseInt(
       getSafe("KAMINO_REFRESH_MS") ||
@@ -212,15 +219,17 @@ export class KaminoService extends Service {
     );
 
     let markets: MarketConfig[] = [];
-    const marketsJson =
-      getSafe("KAMINO_MARKETS") || secrets.KAMINO_MARKETS;
+    const marketsJson = getSafe("KAMINO_MARKETS") || secrets.KAMINO_MARKETS;
 
     if (marketsJson) {
       try {
-        markets = JSON.parse(marketsJson as string);
-      } catch (error) {
-        console.warn(
-          "[KaminoService] Failed to parse KAMINO_MARKETS, using defaults",
+        markets = JSON.parse(marketsJson);
+      } catch {
+        // error-policy:J3 KAMINO_MARKETS is untrusted operator input; a parse
+        // failure produces the explicit "markets=[]" signal that falls through
+        // to DEFAULT_MARKETS — no fabricated data, no silent continue.
+        logger.warn(
+          "[KaminoService] KAMINO_MARKETS is not valid JSON — falling back to default market",
         );
       }
     }
@@ -228,38 +237,28 @@ export class KaminoService extends Service {
     return { rpcUrl, wsUrl, markets, privateKey, keypairPath, refreshIntervalMs };
   }
 
-
+  /**
+   * Builds a KeyPairSigner from the configured credentials.
+   * The base58 private key is decoded in memory — never written to disk.
+   */
   private async loadSigner(
     settings: KaminoPluginSettings,
   ): Promise<KeyPairSigner<string> | null> {
     if (settings.keypairPath) {
-      try {
-        const resolvedPath = path.resolve(
-          settings.keypairPath.startsWith("~")
-            ? settings.keypairPath.replace("~", os.homedir())
-            : settings.keypairPath,
-        );
-        return await parseKeypairFile(resolvedPath);
-      } catch (error) {
-        console.warn(
-          "[KaminoService] Failed to load keypair from file:",
-          error,
-        );
-      }
+      const resolvedPath = path.resolve(
+        settings.keypairPath.startsWith("~")
+          ? settings.keypairPath.replace("~", os.homedir())
+          : settings.keypairPath,
+      );
+      // error-policy:J2 context-adding rethrow — file read failures propagate
+      // with path context so the operator can diagnose quickly.
+      return await parseKeypairFile(resolvedPath);
     }
+
     if (settings.privateKey) {
-      try {
-        const secretKey = bs58.decode(settings.privateKey);
-        const tempPath = path.join(os.tmpdir(), "kamino-keypair-temp.json");
-        fs.writeFileSync(tempPath, JSON.stringify(Array.from(secretKey)));
-        const signer = await parseKeypairFile(tempPath);
-        fs.unlinkSync(tempPath);
-        return signer;
-      } catch {
-        console.warn(
-          "[KaminoService] failed to lead keypair from base58 string",
-        );
-      }
+      const secretKey = bs58.decode(settings.privateKey);
+      // Keep the secret in memory only — no temp files.
+      return await createKeyPairSignerFromBytes(secretKey);
     }
 
     return null;
@@ -270,24 +269,29 @@ export class KaminoService extends Service {
       for (const [name, market] of this.markets) {
         try {
           await market.loadReserves();
-          console.log(`[KaminoService] Refreshed reserves for market: ${name}`);
+          logger.info(`[KaminoService] Refreshed reserves for market: ${name}`);
         } catch (error) {
-          console.error(
-            `[KaminoService] Reserve refresh failed for ${name} : ${error}`,
+          // error-policy:J7 diagnostics-must-not-kill-the-loop — refresh is
+          // best-effort; warn and continue so other markets still refresh.
+          logger.warn(
+            `[KaminoService] Reserve refresh failed for ${name}: ${error}`,
           );
         }
       }
       try {
         await this.refreshReservesCache();
       } catch (error) {
-        console.error(`[KaminoService] Reserves cache refresh failed: ${error}`);
+        // error-policy:J7 same as above.
+        logger.warn(`[KaminoService] Reserves cache refresh failed: ${error}`);
       }
     }, intervalMs);
   }
-  private async refreshReservesCache(): Promise<void>{
+
+  private async refreshReservesCache(): Promise<void> {
     this.reservesCache = await this.computeAllReserves();
     this.reservesCacheUpdatedAt = Date.now();
   }
+
   stopRefreshTimer(): void {
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer);
@@ -298,41 +302,44 @@ export class KaminoService extends Service {
   getRpc(): Rpc<SolanaRpcApi> {
     return this.rpc;
   }
-  getRpcSubscriptions(): any {
+
+  getRpcSubscriptions(): RpcSubscriptions<SolanaRpcSubscriptionsApi> {
     return this.rpcSubscriptions;
   }
+
   getSigner(): KeyPairSigner<string> {
-    if (!this.signer) throw new Error(`[KaminoService] Signer not loaded`);
+    if (!this.signer) throw new Error("[KaminoService] Signer not loaded");
     return this.signer;
   }
 
   getWalletAddress(): Address {
     return this.getSigner().address;
   }
+
   getMarket(name: string): KaminoMarket | undefined {
     return this.markets.get(name);
   }
+
   getAllMarkets(): Map<string, KaminoMarket> {
     return this.markets;
   }
+
   getDefaultMarket(): KaminoMarket {
     const first = this.markets.values().next().value;
-    if (!first) throw new Error("KaminoService: No markets loaded");
+    if (!first) throw new Error("KaminoService: no markets loaded");
     return first;
   }
+
   isInitialized(): boolean {
     return this.isReady;
   }
 
   async getCurrentSlot(): Promise<bigint> {
-    let currentSlot: bigint;
-    try {
-      currentSlot = BigInt(await this.rpc.getSlot().send());
-    } catch (erro) {
-      currentSlot = BigInt(0);
-    }
-    return currentSlot;
+    // Throws on RPC failure — callers that need a slot must handle the error;
+    // returning BigInt(0) would silently corrupt APY/health math.
+    return BigInt(await this.rpc.getSlot().send());
   }
+
   async getBoilerplate(
     marketName: string,
     tokenMint: Address,
@@ -341,44 +348,38 @@ export class KaminoService extends Service {
     currentSlot: bigint;
     market: KaminoMarket;
     reserve: KaminoReserve;
-    amountBN: any;
+    amountBN: InstanceType<typeof BN>;
   }> {
     const currentSlot = await this.getCurrentSlot();
-
     const market = this.getMarket(marketName) || this.getDefaultMarket();
-
     const reserve = market.getFloatRateReserveByMint(tokenMint);
+
     if (!reserve) {
-      throw new Error(`Reserve not found for mint: ${tokenMint}`);
+      throw new Error(`[KaminoService] Reserve not found for mint: ${tokenMint}`);
     }
 
     const decimals = reserve.getMintDecimals();
-    const amountBn = new BN(
+    const amountBN = new BN(
       amount.mul(new Decimal(10).pow(decimals)).toFixed(0),
     );
 
-    return {
-      currentSlot,
-      market,
-      reserve,
-      amountBN: amountBn,
-    };
+    return { currentSlot, market, reserve, amountBN };
   }
-  async getAllReserves(forceRefresh = false): Promise<ReserveInfo[]>{
-    const isStale = Date.now() - this.reservesCacheUpdatedAt > this.RESERVES_CACHE_TTL_MS;
-    if(forceRefresh || this.reservesCacheUpdatedAt === 0 || isStale ){
+
+  async getAllReserves(forceRefresh = false): Promise<ReserveInfo[]> {
+    const isStale =
+      Date.now() - this.reservesCacheUpdatedAt > this.RESERVES_CACHE_TTL_MS;
+    if (forceRefresh || this.reservesCacheUpdatedAt === 0 || isStale) {
       await this.refreshReservesCache();
     }
     return this.reservesCache;
   }
+
   async computeAllReserves(): Promise<ReserveInfo[]> {
     const results: ReserveInfo[] = [];
-    let currentSlot: bigint;
-    try {
-      currentSlot = BigInt(await this.rpc.getSlot().send());
-    } catch (error) {
-      currentSlot = BigInt(0);
-    }
+    // Throws on RPC failure so a dead chain doesn't silently produce
+    // APY = 0% for all reserves (which would look like correct empty data).
+    const currentSlot = await this.getCurrentSlot();
 
     for (const [marketName, market] of this.markets) {
       const reserves = market.getReserves
@@ -387,18 +388,9 @@ export class KaminoService extends Service {
 
       for (const reserve of reserves) {
         const stats = reserve.stats;
-
-        // const referralFeeBps = market.state.referralFeeBps;
-
         const supplyAPY = reserve.totalSupplyAPY(currentSlot);
         const borrowAPY = reserve.totalBorrowAPY(currentSlot);
-
         const mintFactor = reserve.getMintFactor();
-        const totalDepositLamports = reserve.getTotalSupply();
-        const totalBorrowLamports = reserve.getBorrowedAmount();
-        const availableLiquidityLamports =
-          reserve.getLiquidityAvailableAmount();
-
         const config = reserve.state.config;
 
         results.push({
@@ -407,9 +399,10 @@ export class KaminoService extends Service {
           marketName,
           supplyAPY: supplyAPY.toFixed(4),
           borrowAPY: borrowAPY.toFixed(4),
-          totalDeposits: totalDepositLamports.div(mintFactor).toFixed(6),
-          totalBorrows: totalBorrowLamports.div(mintFactor).toFixed(6),
-          availableLiquidity: availableLiquidityLamports
+          totalDeposits: reserve.getTotalSupply().div(mintFactor).toFixed(6),
+          totalBorrows: reserve.getBorrowedAmount().div(mintFactor).toFixed(6),
+          availableLiquidity: reserve
+            .getLiquidityAvailableAmount()
             .div(mintFactor)
             .toFixed(6),
           ltv: stats.loanToValue.toString() || "0",
@@ -422,38 +415,6 @@ export class KaminoService extends Service {
 
     return results;
   }
-
-  // private buildMarketCache(): MarketCache {
-  //   const reserves = await this.getAllReserves();
-
-  //   const reserveMap = new Map(
-  //       reserves.map(r => [r.symbol, r])
-  //   );
-
-  //   const topSupply = [...reserves]
-  //       .sort(
-  //           (a, b) =>
-  //               parseFloat(b.supplyAPY) -
-  //               parseFloat(a.supplyAPY)
-  //       )
-  //       .slice(0, 5);
-
-  //   const topBorrow = [...reserves]
-  //       .sort(
-  //           (a, b) =>
-  //               parseFloat(a.borrowAPY) -
-  //               parseFloat(b.borrowAPY)
-  //       )
-  //       .slice(0, 5);
-
-  //   return {
-  //       reserves,
-  //       reserveMap,
-  //       topSupply,
-  //       topBorrow,
-  //       lastUpdated: Date.now(),
-  //   };
-  // }
 
   getReservesBySymbol(
     symbol: string,
@@ -483,49 +444,41 @@ export class KaminoService extends Service {
     }
 
     const market = this.markets.get(marketName);
-
     if (!market) return null;
 
-    try {
-      let obligation: KaminoObligation | null;
-      if ((obligationTypeTag === ObligationTypeTag.Vanilla)) {
-        obligation = await market.getUserVanillaObligation(
-          this.getWalletAddress(),
-        );
-      } else {
-        obligation = await market.getObligationByWallet(
-          this.getWalletAddress(),
-          new LendingObligation(this.getWalletAddress(), market.programId),
-        );
-      }
-      this.obligationCache.set(cacheKey, {
-        obligation: obligation!,
-        fetchedAt: Date.now(),
-      });
-
-      return obligation;
-    } catch (error) {
-      this.obligationCache.delete(cacheKey);
-      return null;
+    let obligation: KaminoObligation | null;
+    if (obligationTypeTag === ObligationTypeTag.Vanilla) {
+      obligation = await market.getUserVanillaObligation(
+        this.getWalletAddress(),
+      );
+    } else {
+      obligation = await market.getObligationByWallet(
+        this.getWalletAddress(),
+        new LendingObligation(this.getWalletAddress(), market.programId),
+      );
     }
+
+    this.obligationCache.set(cacheKey, {
+      obligation: obligation!,
+      fetchedAt: Date.now(),
+    });
+
+    return obligation;
   }
 
   invalidateObligationCache(
     marketName: string,
     obligationTypeTag: ObligationTypeTag,
   ): void {
-    const cacheKey = obligationTypeTag
-      ? `${marketName}:${obligationTypeTag}`
-      : `${marketName}:${ObligationTypeTag.Vanilla}`;
-
-    this.obligationCache.delete(marketName);
+    const cacheKey = `${marketName}:${obligationTypeTag}`;
+    this.obligationCache.delete(cacheKey);
 
     for (const key of this.obligationCache.keys()) {
       if (key.startsWith(`${marketName}:`)) {
         this.obligationCache.delete(key);
       }
     }
-    console.log(
+    logger.info(
       `[KaminoService] Invalidated obligation cache for ${marketName}`,
     );
   }
@@ -547,23 +500,11 @@ export class KaminoService extends Service {
     return results;
   }
 
-  // async refreshCache(){
-  //   const reserves = await this.getAllReserves();
-  //   await this.re
-  //   this.cache = {
-  //     reserves,
-  //     topSupply: this.(reserves).
-  //   }
-  // }
-
   async getHealthCheck(forceRefresh = false): Promise<HealthCheckResult> {
     const obligations = await this.getAllUserObligations(forceRefresh);
-    let currentSlot: bigint;
-    try {
-      currentSlot = BigInt(await this.rpc.getSlot().send());
-    } catch (error) {
-      currentSlot = BigInt(0);
-    }
+    // Throws on RPC failure — a fabricated slot of 0 would corrupt all APY math.
+    const currentSlot = await this.getCurrentSlot();
+
     if (obligations.size === 0) {
       return {
         positions: [],
@@ -576,6 +517,7 @@ export class KaminoService extends Service {
     const positions: PositionInfo[] = [];
     let worstHealthFactor = new Decimal("Infinity");
     let overallRisk: HealthCheckResult["overallRisk"] = "safe";
+
     for (const [marketName, obligation] of obligations) {
       const stats = obligation.refreshedStats;
 
@@ -594,31 +536,21 @@ export class KaminoService extends Service {
           : healthFactor.lt(1.5)
             ? "caution"
             : "safe";
+
       if (risk === "critical") overallRisk = "critical";
       else if (risk === "danger" && overallRisk !== "critical")
         overallRisk = "danger";
       else if (risk === "caution" && overallRisk === "safe")
         overallRisk = "caution";
 
-      const deposits: Array<{
-        symbol: string;
-        amount: string;
-        valueUsd: string;
-      }> = [];
-      const borrows: Array<{
-        symbol: string;
-        amount: string;
-        valueUsd: string;
-        borrowAPY: string;
-      }> = [];
-
+      const deposits: PositionInfo["deposits"] = [];
+      const borrows: PositionInfo["borrows"] = [];
       const market = this.markets.get(marketName);
 
       for (const [reserveAddress, position] of obligation.deposits.entries()) {
         const reserve = market?.getReserveByAddress(reserveAddress);
-        const symbol = reserve?.symbol || reserveAddress.toString().slice(0, 8);
-        const mintFactor = reserve?.getMintFactor() || position.mintFactor;
-
+        const symbol = reserve?.symbol ?? reserveAddress.toString().slice(0, 8);
+        const mintFactor = reserve?.getMintFactor() ?? position.mintFactor;
         deposits.push({
           symbol,
           amount: position.amount.div(mintFactor).toFixed(6),
@@ -628,13 +560,11 @@ export class KaminoService extends Service {
 
       for (const [reserveAddress, position] of obligation.borrows.entries()) {
         const reserve = market?.getReserveByAddress(reserveAddress);
-        const symbol = reserve?.symbol || reserveAddress.toString().slice(0, 8);
-        const mintFactor = reserve?.getMintFactor() || position.mintFactor;
-
+        const symbol = reserve?.symbol ?? reserveAddress.toString().slice(0, 8);
+        const mintFactor = reserve?.getMintFactor() ?? position.mintFactor;
         const borrowAPY = reserve
           ? reserve.totalBorrowAPY(currentSlot)
           : new Decimal(0);
-
         borrows.push({
           symbol,
           amount: position.amount.div(mintFactor).toFixed(6),
@@ -648,11 +578,12 @@ export class KaminoService extends Service {
         deposits,
         borrows,
         healthFactor: healthFactor.toFixed(4),
-        borrowLimit: obligation.refreshedStats.borrowLimit.toFixed(2),
-        netValue: obligation.refreshedStats.netAccountValue.toFixed(2),
-        ltv: obligation.refreshedStats.loanToValue.toFixed(4),
+        borrowLimit: stats.borrowLimit.toFixed(2),
+        netValue: stats.netAccountValue.toFixed(2),
+        ltv: stats.loanToValue.toFixed(4),
       });
     }
+
     return {
       positions,
       hasPositions: true,
@@ -663,9 +594,8 @@ export class KaminoService extends Service {
 
   /**
    * HTTP-polling fallback for transaction confirmation.
-   * Used when the WebSocket subscription fails (e.g. port mismatch with
-   * Surfpool which uses rpcPort+1 for WS). Polls up to `maxAttempts` times
-   * with `intervalMs` between checks.
+   * Used when the WebSocket subscription fails (e.g., port mismatch with local
+   * validators like Surfpool that run WS on rpcPort+1).
    */
   private async pollForConfirmation(
     signature: string,
@@ -675,6 +605,7 @@ export class KaminoService extends Service {
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const result = await this.rpc
+          // biome-ignore lint/suspicious/noExplicitAny: klend-sdk signature type is opaque
           .getSignatureStatuses([signature as any])
           .send();
         const status = result.value[0];
@@ -686,7 +617,9 @@ export class KaminoService extends Service {
           return true;
         }
       } catch {
-        // continue polling
+        // error-policy:J5 unhandled-rejection suppression — polling loop
+        // observes success via the return value; transient RPC errors just
+        // retry until maxAttempts.
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
     }
@@ -694,12 +627,7 @@ export class KaminoService extends Service {
   }
 
   async sendActionTransaction(
-    action: {
-      setupIxs?: any[];
-      lendingIxs?: any[];
-      cleanupIxs?: any[];
-      computeBudgetIxs?: any[];
-    },
+    action: KaminoTxns,
     options: {
       skipPreFlight?: boolean;
       commitment?: "confirmed" | "finalized";
@@ -714,7 +642,6 @@ export class KaminoService extends Service {
 
     const signatures: string[] = [];
     const signer = this.getSigner();
-
     const setupIxs = action.setupIxs ?? [];
 
     if (setupIxs.length > 0) {
@@ -724,9 +651,11 @@ export class KaminoService extends Service {
 
       const setupTxMessage = pipe(
         createTransactionMessage({ version: 0 }),
+        // biome-ignore lint/suspicious/noExplicitAny: klend-sdk instruction type is opaque
         (tx) => setTransactionMessageFeePayerSigner(signer, tx),
         (tx) => setTransactionMessageLifetimeUsingBlockhash(setupBlockhash, tx),
-        (tx) => appendTransactionMessageInstructions(setupIxs, tx),
+        // biome-ignore lint/suspicious/noExplicitAny: klend-sdk instruction type is opaque
+        (tx) => appendTransactionMessageInstructions(setupIxs as any[], tx),
       );
 
       const setupSignedTx =
@@ -744,13 +673,13 @@ export class KaminoService extends Service {
     }
 
     const lendingInstructions = [
-      ...(action.computeBudgetIxs || []),
-      ...(action.lendingIxs || []),
-      ...(action.cleanupIxs || []),
+      ...(action.computeBudgetIxs ?? []),
+      ...(action.lendingIxs ?? []),
+      ...(action.cleanupIxs ?? []),
     ];
 
     if (!lendingInstructions.length) {
-      throw new Error("No instuction returned by Kamino SDK");
+      throw new Error("[KaminoService] No instructions returned by Kamino SDK");
     }
 
     const sendMainTx = async (): Promise<string> => {
@@ -763,7 +692,8 @@ export class KaminoService extends Service {
         (tx) => setTransactionMessageFeePayerSigner(signer, tx),
         (tx) =>
           setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-        (tx) => appendTransactionMessageInstructions(lendingInstructions, tx),
+        // biome-ignore lint/suspicious/noExplicitAny: klend-sdk instruction type is opaque
+        (tx) => appendTransactionMessageInstructions(lendingInstructions as any[], tx),
       );
 
       const signedTransaction =
@@ -776,18 +706,21 @@ export class KaminoService extends Service {
           rpc: this.rpc,
           rpcSubscriptions: this.rpcSubscriptions,
         })(signedTransaction, { commitment, skipPreflight: skipPreFlight });
-      } catch (wsError: any) {
-        // WebSocket subscription can fail when the WS port doesn't match
+      } catch (wsError: unknown) {
+        // WebSocket confirmation can fail when the WS port doesn't match
         // (e.g., Surfpool uses rpcPort+1). Fall back to HTTP polling so a
         // confirmed transaction still shows "Completed" in the UI.
-        console.warn(
-          `[KaminoService] WS confirmation failed (${wsError?.message ?? wsError}), polling via HTTP...`,
+        const msg = wsError instanceof Error ? wsError.message : String(wsError);
+        logger.warn(
+          `[KaminoService] WS confirmation failed (${msg}), polling via HTTP…`,
         );
         const confirmed = await this.pollForConfirmation(String(signature));
         if (!confirmed) {
-          throw wsError; // Only re-throw if the tx truly didn't land.
+          throw wsError;
         }
-        console.log(`[KaminoService] Confirmed via HTTP polling: ${signature}`);
+        logger.info(
+          `[KaminoService] Transaction confirmed via HTTP polling: ${signature}`,
+        );
       }
 
       return signature;
@@ -796,8 +729,9 @@ export class KaminoService extends Service {
     try {
       const mainSignature = await sendMainTx();
       signatures.push(mainSignature);
-    } catch (error: any) {
-      const errorMsg = error?.message || error?.toString() || "";
+    } catch (error: unknown) {
+      const errorMsg =
+        error instanceof Error ? error.message : String(error);
       const is0x17a3 =
         retryOn0x17a3 &&
         (errorMsg.includes("0x17a3") ||
@@ -805,7 +739,7 @@ export class KaminoService extends Service {
           errorMsg.includes("IncorrectInstructionPosition"));
 
       if (is0x17a3 && setupIxs.length > 0) {
-        console.log("[KaminoService] Retrying after 0x17a3 error...");
+        logger.info("[KaminoService] Retrying after 0x17a3 error…");
         await new Promise((resolve) => setTimeout(resolve, 2000));
         const retrySignature = await sendMainTx();
         signatures.push(retrySignature);
@@ -813,6 +747,7 @@ export class KaminoService extends Service {
         throw error;
       }
     }
+
     return signatures;
   }
 
@@ -820,15 +755,9 @@ export class KaminoService extends Service {
     marketName: string,
     tokenMint: Address,
     amount: Decimal,
-  ): Promise<{
-    setupIxs: any[];
-    lendingIxs: any[];
-    cleanupIxs: any[];
-    computeBudgetIxs: any[];
-  }> {
+  ): Promise<KaminoTxns> {
     const { currentSlot, market, reserve, amountBN } =
       await this.getBoilerplate(marketName, tokenMint, amount);
-
     const obligation = new LendingObligation(tokenMint, market.programId);
 
     return KaminoAction.buildDepositReserveLiquidityTxns({
@@ -838,7 +767,7 @@ export class KaminoService extends Service {
       owner: this.getSigner(),
       obligation,
       scopeRefreshConfig: undefined,
-      currentSlot: currentSlot,
+      currentSlot,
     });
   }
 
@@ -846,12 +775,7 @@ export class KaminoService extends Service {
     marketName: string,
     tokenMint: Address,
     amount: Decimal,
-  ): Promise<{
-    setupIxs: any[];
-    lendingIxs: any[];
-    cleanupIxs: any[];
-    computeBudgetIxs: any[];
-  }> {
+  ): Promise<KaminoTxns> {
     const { currentSlot, market, reserve, amountBN } =
       await this.getBoilerplate(marketName, tokenMint, amount);
     const obligation = new LendingObligation(tokenMint, market.programId);
@@ -871,22 +795,16 @@ export class KaminoService extends Service {
     marketName: string,
     tokenMint: Address,
     amount: Decimal,
-  ): Promise<{
-    setupIxs: any[];
-    lendingIxs: any[];
-    cleanupIxs: any[];
-    computeBudgetIxs: any[];
-  }> {
+  ): Promise<KaminoTxns> {
     const { currentSlot, market, reserve, amountBN } =
       await this.getBoilerplate(marketName, tokenMint, amount);
-    const obligation = new VanillaObligation(market.programId);
 
     return KaminoAction.buildDepositTxns({
       kaminoMarket: market,
       amount: amountBN,
       reserveAddress: reserve.address,
       owner: this.getSigner(),
-      obligation,
+      obligation: new VanillaObligation(market.programId),
       useV2Ixs: true,
       scopeRefreshConfig: undefined,
       currentSlot,
@@ -897,12 +815,7 @@ export class KaminoService extends Service {
     marketName: string,
     tokenMint: Address,
     amount: Decimal,
-  ): Promise<{
-    setupIxs: any[];
-    lendingIxs: any[];
-    cleanupIxs: any[];
-    computeBudgetIxs: any[];
-  }> {
+  ): Promise<KaminoTxns> {
     const { currentSlot, market, reserve, amountBN } =
       await this.getBoilerplate(marketName, tokenMint, amount);
 
@@ -922,12 +835,7 @@ export class KaminoService extends Service {
     marketName: string,
     tokenMint: Address,
     amount: Decimal,
-  ): Promise<{
-    setupIxs: any[];
-    lendingIxs: any[];
-    cleanupIxs: any[];
-    computeBudgetIxs: any[];
-  }> {
+  ): Promise<KaminoTxns> {
     const { currentSlot, market, reserve, amountBN } =
       await this.getBoilerplate(marketName, tokenMint, amount);
 
@@ -948,7 +856,7 @@ export class KaminoService extends Service {
     marketName: string,
     tokenMint: Address,
     amount: Decimal,
-  ): Promise<{ setupIxs: any[]; lendingIxs: any[]; cleanupIxs: any[] }> {
+  ): Promise<KaminoTxns> {
     const { currentSlot, market, reserve, amountBN } =
       await this.getBoilerplate(marketName, tokenMint, amount);
 

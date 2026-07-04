@@ -1,3 +1,4 @@
+/** KAMINO_REPAY action — repays a borrowed position on Kamino; supports 'max' to repay the full outstanding amount. */
 import {
   Action,
   HandlerCallback,

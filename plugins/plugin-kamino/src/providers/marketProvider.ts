@@ -1,9 +1,15 @@
+/**
+ * KAMINO_MARKET provider — injects live Kamino reserve data (APYs, liquidity,
+ * LTV) into every LLM context so the agent can answer market questions without
+ * an explicit action trigger.
+ */
 import {
   IAgentRuntime,
   Memory,
   Provider,
   ProviderResult,
   State,
+  logger,
 } from "@elizaos/core";
 import { KaminoService } from "../services/kamino";
 
@@ -112,9 +118,11 @@ export const marketProvider: Provider = {
         },
       };
     } catch (error) {
-      console.error("[MarketProvider] Failed to fetch reserves:", error);
+      // error-policy:J4 explicit user-facing degrade — provider errors render
+      // as a designed "unavailable" state rather than crashing the LLM context.
+      logger.error(`[MarketProvider] Failed to fetch reserves: ${error}`);
       return {
-        text: "Kamino market data is temporarily unavailable due to an error.",
+        text: "Kamino market data is temporarily unavailable.",
         data: { available: false, error: String(error) },
         values: {},
       };
